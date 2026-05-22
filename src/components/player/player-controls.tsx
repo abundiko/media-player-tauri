@@ -1,6 +1,8 @@
 import { Button, Tooltip, TooltipTrigger } from 'react-aria-components'
 import { LuPlay, LuPause, LuSkipBack, LuSkipForward, LuMaximize2, LuMinimize2 } from 'react-icons/lu'
 import { ProgressBar } from './progress-bar'
+import { FitControl } from './fit-control'
+import { SpeedControl } from './speed-control'
 import { VolumeControl } from './volume-control'
 import { SubtitleControl } from './subtitle-control'
 
@@ -18,11 +20,15 @@ interface PlayerControlsProps {
   duration: number
   playing: boolean
   fullscreen: boolean
+  fit: string
+  speed: number
   onSeek: (time: number) => void
   onTogglePlay: () => void
   onSkipBack: () => void
   onSkipForward: () => void
   onToggleFullscreen: () => void
+  onChangeFit: (id: string) => void
+  onChangeSpeed: (speed: number) => void
   onPickSubtitleFile: () => void
   externalSubtitleFileName: string | null
 }
@@ -32,11 +38,15 @@ export function PlayerControls({
   duration,
   playing,
   fullscreen,
+  fit,
+  speed,
   onSeek,
   onTogglePlay,
   onSkipBack,
   onSkipForward,
   onToggleFullscreen,
+  onChangeFit,
+  onChangeSpeed,
   onPickSubtitleFile,
   externalSubtitleFileName,
 }: PlayerControlsProps) {
@@ -94,6 +104,8 @@ export function PlayerControls({
         </div>
 
         <div className="flex items-center gap-2">
+          <SpeedControl speed={speed} onChangeSpeed={onChangeSpeed} />
+          <FitControl fit={fit} onChangeFit={onChangeFit} />
           <SubtitleControl
             onPickFile={onPickSubtitleFile}
             externalFileName={externalSubtitleFileName}

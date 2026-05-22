@@ -21,9 +21,9 @@ fn read_file_bytes(path: String) -> Result<Vec<u8>, String> {
 }
 
 #[tauri::command]
-fn get_transcode_url(path: String, seek_time: f64, port: State<ServerPort>) -> String {
+fn get_transcode_url(path: String, seek_time: f64, speed: f64, port: State<ServerPort>) -> String {
     let encoded = urlencoding::encode(&path);
-    format!("http://127.0.0.1:{}/transcode?path={}&t={:.3}", port.0, encoded, seek_time)
+    format!("http://127.0.0.1:{}/transcode?path={}&t={:.3}&s={:.3}", port.0, encoded, seek_time, speed)
 }
 
 #[tauri::command]

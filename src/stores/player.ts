@@ -24,8 +24,8 @@ export interface PlayerState {
   activeSubtitleTrack: number | null
 
   loadFile: (path: string) => Promise<void>
-  enableTranscoding: () => Promise<void>
-  seekTranscode: (time: number) => Promise<void>
+  enableTranscoding: (speed?: number) => Promise<void>
+  seekTranscode: (time: number, speed?: number) => Promise<void>
   setPlaying: (playing: boolean) => void
   togglePlay: () => void
   setCurrentTime: (t: number) => void
@@ -57,7 +57,13 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
     const parts = path.replace(/\\/g, '/').split('/')
     const fileName = parts[parts.length - 1] || path
 
-    const prev = get().blobUrl
+    const state = get()
+    if (state.filePath === path) {
+      console.log('[loadFile] already loaded, skipping:', path)
+      return
+    }
+
+    const prev = state.blobUrl
     if (prev && prev.startsWith('blob:')) URL.revokeObjectURL(prev)
     set({ blobUrl: null, streamUrl: null, transcodeUrl: null, needsTranscode: false, timeOffset: 0, subtitleTracks: [], activeSubtitleTrack: null })
 
@@ -85,10 +91,10 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
     }
   },
 
-  enableTranscoding: async () => {
+  enableTranscoding: async (speed: number = 1) => {
     const { filePath } = get()
     if (!filePath) return
-    console.log('[player] switching to FFmpeg transcoding')
+    console.log('[player] switching to FFmpeg transcoding, speed:', speed)
     try {
       // First, get the actual video duration
       let realDuration = 0
@@ -99,7 +105,8 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
         console.error('[player] probe_duration failed:', e)
       }
 
-      const transcodeUrl = await invoke<string>('get_transcode_url', { path: filePath, seekTime: 0 })
+      const transcodeUrl = await invoke<string>('get_transcode_url', { path: filePath, seekTime: 0, speed })
+      console.log('[player] transcodeUrl:', transcodeUrl)
       set({ 
         transcodeUrl, 
         streamUrl: null, 
@@ -108,16 +115,18 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
         timeOffset: 0,
         duration: realDuration > 0 ? realDuration : get().duration
       })
+      console.log('[player] transcoding enabled, new src set')
     } catch (e) {
       console.error('[player] enableTranscoding failed:', e)
     }
   },
 
-  seekTranscode: async (time: number) => {
+  seekTranscode: async (time: number, speed?: number) => {
     const { filePath } = get()
     if (!filePath) return
+    const s = speed ?? 1
     try {
-      const transcodeUrl = await invoke<string>('get_transcode_url', { path: filePath, seekTime: time })
+      const transcodeUrl = await invoke<string>('get_transcode_url', { path: filePath, seekTime: time, speed: s })
       set({ transcodeUrl, timeOffset: time, currentTime: time })
     } catch (e) {
       console.error('[player] seekTranscode failed:', e)

@@ -177,18 +177,40 @@ fn handle_request(request: tiny_http::Request) {
     let _ = request.respond(resp);
 }
 
+/// Build FFmpeg audio filter chain for atempo, handling the 0.5–2.0 limit.
+fn speed_audio_filter(speed: f64) -> String {
+    if speed == 1.0 {
+        return String::new();
+    }
+    let mut parts = Vec::new();
+    let mut s = speed;
+    while s > 2.0 {
+        parts.push("atempo=2.0".to_string());
+        s /= 2.0;
+    }
+    while s < 0.5 {
+        parts.push("atempo=0.5".to_string());
+        s /= 0.5;
+    }
+    parts.push(format!("atempo={:.4}", s));
+    parts.join(",")
+}
+
 /// Transcode video on-the-fly via FFmpeg to H.264 fragmented MP4.
-/// URL format: /transcode?path=<url-encoded-path>&t=<seek-seconds>
+/// URL format: /transcode?path=<url-encoded-path>&t=<seek-seconds>&s=<speed>
 fn handle_transcode(request: tiny_http::Request, url: &str) {
     let query = url.strip_prefix("/transcode?").unwrap_or("");
     let mut path = String::new();
     let mut seek_secs: f64 = 0.0;
+    let mut speed: f64 = 1.0;
 
     for param in query.split('&') {
         if let Some(val) = param.strip_prefix("path=") {
             path = urlencoding::decode(val).unwrap_or_default().to_string();
         } else if let Some(val) = param.strip_prefix("t=") {
             seek_secs = val.parse().unwrap_or(0.0);
+        } else if let Some(val) = param.strip_prefix("s=") {
+            speed = val.parse().unwrap_or(1.0);
         }
     }
 
@@ -209,6 +231,15 @@ fn handle_transcode(request: tiny_http::Request, url: &str) {
         "-c:v".into(), "libx264".into(),
         "-preset".into(), "ultrafast".into(),
         "-crf".into(), "23".into(),
+    ]);
+    if speed != 1.0 {
+        args.extend(["-vf".into(), format!("setpts=PTS/{:.4}", speed)]);
+        let afilter = speed_audio_filter(speed);
+        if !afilter.is_empty() {
+            args.extend(["-af".into(), afilter]);
+        }
+    }
+    args.extend([
         "-c:a".into(), "aac".into(),
         "-b:a".into(), "128k".into(),
         "-f".into(), "mp4".into(),

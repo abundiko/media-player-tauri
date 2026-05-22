@@ -18,7 +18,9 @@ export function KeyboardHandler({
 }: KeyboardHandlerProps) {
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return
+      const target = e.target as HTMLElement;
+      if (target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement) return;
+      if (target.closest('button, [role="button"]')) return;
 
       switch (e.key) {
         case ' ':
