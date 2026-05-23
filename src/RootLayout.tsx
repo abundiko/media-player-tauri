@@ -5,6 +5,7 @@ import { getCurrentWindow } from '@tauri-apps/api/window'
 import { isMediaFile } from './components/drop-zone'
 import { DragOverlay } from './components/drag-overlay'
 import { ErrorModal } from './components/error-modal'
+import { TitleBar } from './components/title-bar'
 
 export function RootLayout() {
   const navigate = useNavigate()
@@ -94,11 +95,14 @@ export function RootLayout() {
     <div
       onDragOver={(e) => e.preventDefault()}
       onDrop={(e) => e.preventDefault()}
-      className="min-h-dvh"
+      className="flex h-dvh flex-col"
     >
+      <TitleBar />
+      <div className="flex flex-1 overflow-hidden">
+        <Outlet />
+      </div>
       <DragOverlay dragging={dragging} />
       <ErrorModal isOpen={errorModalOpen} onOpenChange={setErrorModalOpen} />
-      <Outlet />
     </div>
   )
 }

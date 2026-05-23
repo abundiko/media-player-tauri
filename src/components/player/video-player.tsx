@@ -18,7 +18,6 @@ import { PlayerControls } from "./player-controls";
 import { KeyboardHandler } from "./keyboard-handler";
 import { getSavedFit, saveFit, FIT_OPTIONS } from "./fit-control";
 
-const MACOS_TRAFFIC_LIGHT_WIDTH = 70;
 const EXT_SUBTITLE_ID = -1;
 
 interface VttCue {
@@ -637,7 +636,7 @@ export function VideoPlayer() {
   return (
     <div
       ref={containerRef}
-      className="relative flex h-dvh flex-col overflow-hidden bg-black"
+      className="relative flex h-full w-full flex-col overflow-hidden bg-black"
     >
       <KeyboardHandler
         onTogglePlay={togglePlay}
@@ -714,11 +713,7 @@ export function VideoPlayer() {
           transition: "all 0.4s",
         }}
       >
-        <div
-          className="mx-auto flex max-w-[1600px] items-center gap-2 py-1.5"
-          style={{ paddingInline: MACOS_TRAFFIC_LIGHT_WIDTH }}
-          data-tauri-drag-region
-        >
+        <div className="mx-auto flex max-w-[1600px] items-center gap-2 py-1.5">
           <TooltipTrigger>
             <Button
               onPress={close}

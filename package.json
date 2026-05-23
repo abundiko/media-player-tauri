@@ -14,6 +14,7 @@
     "@tailwindcss/vite": "^4.3.0",
     "@tauri-apps/api": "^2.11.0",
     "@tauri-apps/plugin-dialog": "^2.7.1",
+    "motion": "^12.40.0",
     "react": "^19.2.6",
     "react-aria-components": "^1.17.0",
     "react-dom": "^19.2.6",
