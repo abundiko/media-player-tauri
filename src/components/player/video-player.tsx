@@ -243,15 +243,16 @@ export function VideoPlayer() {
     const video = videoRef.current;
     if (!video || !src) return;
 
+    triedTranscode.current = false;
     console.log("[video] setting src to:", src);
     video.src = src;
     video.load();
-    video.playbackRate = speedRef.current;
+    if (!needsTranscode) video.playbackRate = speedRef.current;
 
     const onTimeUpdate = () => {
-      video.playbackRate = speedRef.current;
+      if (!needsTranscode) video.playbackRate = speedRef.current;
       if (needsTranscode) {
-        setCurrentTime(timeOffset + video.currentTime);
+        setCurrentTime(timeOffset + video.currentTime * speedRef.current);
       } else {
         setCurrentTime(video.currentTime);
       }
@@ -430,7 +431,7 @@ export function VideoPlayer() {
   useEffect(() => {
     const video = videoRef.current;
     if (!video) return;
-    video.playbackRate = speed;
+    if (!needsTranscode) video.playbackRate = speed;
     console.log("[speed] set playbackRate to", speed);
   }, [speed]);
 
@@ -444,8 +445,13 @@ export function VideoPlayer() {
     const video = videoRef.current;
     if (!video) return;
     if (video.readyState >= 2) {
-      if (playing) video.play().catch(() => {});
-      else video.pause();
+      if (playing) {
+        video.play().catch(() => {});
+        audioCtxRef.current?.resume();
+      } else {
+        video.pause();
+        audioCtxRef.current?.suspend();
+      }
     }
   }, [playing]);
 
@@ -553,16 +559,19 @@ export function VideoPlayer() {
   const handleSeek = useCallback(
     (t: number) => {
       setCurrentTime(t);
-      if (videoRef.current) videoRef.current.currentTime = t;
+      if (needsTranscode) {
+        usePlayerStore.getState().seekTranscode(t, speedRef.current);
+      } else if (videoRef.current) {
+        videoRef.current.currentTime = t;
+      }
     },
-    [setCurrentTime],
+    [setCurrentTime, needsTranscode],
   );
 
   const skipBack = useCallback(() => {
     const t = Math.max(0, currentTime - 10);
     if (needsTranscode) {
-      const { seekTranscode } = usePlayerStore.getState();
-      seekTranscode(t);
+      usePlayerStore.getState().seekTranscode(t, speedRef.current);
     } else if (videoRef.current) {
       videoRef.current.currentTime = t;
       setCurrentTime(t);
@@ -572,8 +581,7 @@ export function VideoPlayer() {
   const skipForward = useCallback(() => {
     const t = Math.min(duration, currentTime + 10);
     if (needsTranscode) {
-      const { seekTranscode } = usePlayerStore.getState();
-      seekTranscode(t);
+      usePlayerStore.getState().seekTranscode(t, speedRef.current);
     } else if (videoRef.current) {
       videoRef.current.currentTime = t;
       setCurrentTime(t);

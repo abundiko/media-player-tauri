@@ -84,19 +84,25 @@ import { Select, Label, Button, ListBox, ListBoxItem, Popover } from 'react-aria
 
 ---
 
-## Color System (Grayscale)
+## Color System (Pure Monochrome)
 
 | Token | Light | Dark | Usage |
 |---|---|---|---|
-| `--surface` | `#ffffff` | `#0a0a0a` | Main background |
-| `--surface-alt` | `#f5f5f5` | `#1a1a1a` | Secondary bg, list hover |
-| `--surface-hover` | `#e5e5e5` | `#262626` | Button/row hover |
-| `--border` | `#d4d4d4` | `#333333` | Dividers, borders |
+| `--surface` | `#ffffff` | `#000000` | Main background (pure white / pure black) |
+| `--surface-alt` | `rgba(255,255,255,0.8)` | `rgba(0,0,0,0.8)` | Overlays, popups, dropdowns — paired with `backdrop-blur-xl` for frosted-glass effect |
+| `--surface-hover` | `rgba(0,0,0,0.04)` | `rgba(255,255,255,0.06)` | Button/row hover (subtle tint) |
+| `--border` | `#d4d4d4` | `#404040` | Dividers, borders (neutral-300 light / neutral-700 dark) |
 | `--text` | `#171717` | `#f5f5f5` | Primary text |
 | `--text-muted` | `#737373` | `#a3a3a3` | Secondary text, captions |
 | `--ring` | `#a3a3a3` | `#525252` | Focus rings |
 
 No accent colors. No brand colors. Hierarchy via weight + size only.
+
+### Surfaces
+- **Main background** — `--surface`: pure white / pure black. No tint.
+- **Floating surfaces** (modals, popups, dropdowns) — `--surface-alt` at 80% opacity + `backdrop-blur-xl`. In dark mode, a near-black frosted panel floats above pure black. In light mode, a near-white frosted panel floats above pure white.
+- **Borders** — `--border`: `neutral-300` light, `neutral-700` dark. Soft but visible.
+- **Shadows** — Tailwind `shadow-lg` for depth on floating elements.
 
 ---
 

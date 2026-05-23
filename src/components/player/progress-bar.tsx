@@ -5,7 +5,6 @@ export function ProgressBar({ onSeek }: { onSeek: (time: number) => void }) {
   const currentTime = usePlayerStore((s) => s.currentTime)
   const duration = usePlayerStore((s) => s.duration)
   const needsTranscode = usePlayerStore((s) => s.needsTranscode)
-  const seekTranscode = usePlayerStore((s) => s.seekTranscode)
 
   const seekTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const [dragTime, setDragTime] = useState<number | null>(null)
@@ -18,7 +17,7 @@ export function ProgressBar({ onSeek }: { onSeek: (time: number) => void }) {
         setDragTime(t)
         if (seekTimeoutRef.current) clearTimeout(seekTimeoutRef.current)
         seekTimeoutRef.current = setTimeout(() => {
-          seekTranscode(t)
+          onSeek(t)
           setDragTime(null)
         }, 1000)
       } else {
@@ -26,7 +25,7 @@ export function ProgressBar({ onSeek }: { onSeek: (time: number) => void }) {
         setDragTime(t)
       }
     },
-    [needsTranscode, onSeek, seekTranscode],
+    [needsTranscode, onSeek],
   )
 
   const handleMouseUp = useCallback(() => {

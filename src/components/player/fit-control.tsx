@@ -79,14 +79,15 @@ export function FitControl({ fit, onChangeFit }: FitControlProps) {
       {open && (
         <div
           ref={menuRef}
-          className="absolute bottom-full right-0 mb-2 min-w-[140px] overflow-hidden rounded-lg bg-gray-900/95 py-1 shadow-xl backdrop-blur-sm"
+          className="absolute bottom-full right-0 mb-2 min-w-[140px] overflow-hidden rounded-lg border border-border py-1 shadow-lg backdrop-blur-xl"
+          style={{ background: 'var(--surface-alt)' }}
         >
           {FIT_OPTIONS.map((opt) => (
             <button
               key={opt.id}
               onClick={() => select(opt.id)}
-              className={`w-full px-3 py-1.5 text-left text-xs transition-colors hover:bg-white/10 ${
-                fit === opt.id ? 'text-cyan-400' : 'text-white/70'
+              className={`w-full px-3 py-1.5 text-left text-xs transition-colors hover:bg-surface-hover ${
+                fit === opt.id ? 'text-cyan-400' : 'text-text-muted'
               }`}
             >
               {opt.label}

@@ -15,10 +15,11 @@ export function ErrorModal({ isOpen, onOpenChange }: ErrorModalProps) {
       isOpen={isOpen}
       onOpenChange={onOpenChange}
       className={({ isEntering, isExiting }) =>
-        `fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4 backdrop-blur-sm ${
+        `fixed inset-0 z-50 flex items-center justify-center p-4 backdrop-blur-xl ${
           isEntering ? 'animate-fade-in' : ''
         } ${isExiting ? 'animate-fade-out' : ''}`
       }
+      style={{ background: 'var(--surface-alt)' }}
     >
       <Modal
         className={({ isEntering, isExiting }) =>

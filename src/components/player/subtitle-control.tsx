@@ -58,20 +58,21 @@ export function SubtitleControl({ onPickFile, externalFileName }: SubtitleContro
         {open && (
           <div
             ref={menuRef}
-            className="absolute bottom-full right-0 mb-2 min-w-[180px] overflow-hidden rounded-lg bg-gray-900/95 py-1 shadow-xl backdrop-blur-sm"
+            className="absolute bottom-full right-0 mb-2 min-w-[180px] overflow-hidden rounded-lg border border-border py-1 shadow-lg backdrop-blur-xl"
+            style={{ background: 'var(--surface-alt)' }}
           >
             <button
               onClick={() => select(null)}
-              className={`w-full px-3 py-1.5 text-left text-xs transition-colors hover:bg-white/10 ${
-                isActive(null) ? 'text-cyan-400' : 'text-white/70'
+              className={`w-full px-3 py-1.5 text-left text-xs transition-colors hover:bg-surface-hover ${
+                isActive(null) ? 'text-cyan-400' : 'text-text-muted'
               }`}
             >
               Off
             </button>
-            <div className="border-t border-white/10" />
+            <div className="border-t border-border" />
             <button
               onClick={onPickFile}
-              className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-xs text-white/50 transition-colors hover:bg-white/10 hover:text-white"
+              className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-xs text-text-muted transition-colors hover:bg-surface-hover hover:text-text"
             >
               <LuFileUp size={12} />
               Select file...
@@ -101,12 +102,13 @@ export function SubtitleControl({ onPickFile, externalFileName }: SubtitleContro
       {open && (
         <div
           ref={menuRef}
-          className="absolute bottom-full right-0 mb-2 min-w-[180px] overflow-hidden rounded-lg bg-gray-900/95 py-1 shadow-xl backdrop-blur-sm"
+          className="absolute bottom-full right-0 mb-2 min-w-[180px] overflow-hidden rounded-lg border border-border py-1 shadow-lg backdrop-blur-xl"
+          style={{ background: 'var(--surface-alt)' }}
         >
           <button
             onClick={() => select(null)}
-            className={`w-full px-3 py-1.5 text-left text-xs transition-colors hover:bg-white/10 ${
-              isActive(null) ? 'text-cyan-400' : 'text-white/70'
+            className={`w-full px-3 py-1.5 text-left text-xs transition-colors hover:bg-surface-hover ${
+              isActive(null) ? 'text-cyan-400' : 'text-text-muted'
             }`}
           >
             Off
@@ -116,13 +118,13 @@ export function SubtitleControl({ onPickFile, externalFileName }: SubtitleContro
             <button
               key={track.index}
               onClick={() => select(track.index)}
-              className={`w-full px-3 py-1.5 text-left text-xs transition-colors hover:bg-white/10 ${
-                isActive(track.index) ? 'text-cyan-400' : 'text-white/70'
+              className={`w-full px-3 py-1.5 text-left text-xs transition-colors hover:bg-surface-hover ${
+                isActive(track.index) ? 'text-cyan-400' : 'text-text-muted'
               }`}
             >
               {track.title}
               {track.language && (
-                <span className="ml-2 text-[10px] text-white/40">{track.language}</span>
+                <span className="ml-2 text-[10px] text-text-muted">{track.language}</span>
               )}
             </button>
           ))}
@@ -130,18 +132,18 @@ export function SubtitleControl({ onPickFile, externalFileName }: SubtitleContro
           {externalFileName && (
             <button
               onClick={() => select(EXT_ID)}
-              className={`w-full truncate px-3 py-1.5 text-left text-xs transition-colors hover:bg-white/10 ${
-                isActive(EXT_ID) ? 'text-cyan-400' : 'text-white/70'
+              className={`w-full truncate px-3 py-1.5 text-left text-xs transition-colors hover:bg-surface-hover ${
+                isActive(EXT_ID) ? 'text-cyan-400' : 'text-text-muted'
               }`}
             >
               {externalFileName}
             </button>
           )}
 
-          <div className="border-t border-white/10" />
+          <div className="border-t border-border" />
           <button
             onClick={onPickFile}
-            className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-xs text-white/50 transition-colors hover:bg-white/10 hover:text-white"
+            className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-xs text-text-muted transition-colors hover:bg-surface-hover hover:text-text"
           >
             <LuFileUp size={12} />
             Select file...
