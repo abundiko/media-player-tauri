@@ -1,8 +1,8 @@
 {
   "$schema": "../node_modules/@tauri-apps/cli/config.schema.json",
-  "productName": "media-player",
+  "productName": "Caste",
   "version": "0.1.0",
-  "identifier": "com.mediaplayer.app",
+  "identifier": "com.abundiko.caste",
   "build": {
     "frontendDist": "../dist",
     "devUrl": "http://localhost:5173",
@@ -12,14 +12,15 @@
   "app": {
     "windows": [
       {
-        "title": "Media Player",
+        "title": "Caste",
         "width": 1024,
         "height": 720,
         "minWidth": 640,
         "minHeight": 480,
         "resizable": true,
         "fullscreen": false,
-        "decorations": false
+        "decorations": false,
+        "transparent": true
       }
     ],
     "security": {
@@ -29,6 +30,13 @@
   "bundle": {
     "active": true,
     "targets": "all",
+    "publisher": "abundiko",
+    "copyright": "Copyright (c) 2024 abundiko",
+    "shortDescription": "A desktop media player with custom controls, animated backgrounds, and equalizer",
+    "longDescription": "Caste is a desktop-feel media player with custom controls, animated backgrounds, equalizer, resume playback, and native window behavior. Built with Tauri and React.",
+    "licenseFile": "../LICENSE",
+    "category": "Entertainment",
+    "homepage": "https://github.com/abundiko/caste",
     "icon": [
       "icons/32x32.png",
       "icons/128x128.png",
@@ -36,6 +44,34 @@
       "icons/icon.icns",
       "icons/icon.ico"
     ],
+    "externalBin": [
+      "bin/caste-ffmpeg",
+      "bin/caste-ffprobe"
+    ],
+    "fileAssociations": [
+      {
+        "name": "Media File",
+        "description": "Caste Video and Audio File",
+        "mimeType": "video/mp4;video/x-matroska;video/x-msvideo;video/quicktime;video/x-ms-wmv;video/x-flv;video/webm;video/mpeg;audio/mpeg;audio/flac;audio/wav;audio/aac;audio/ogg;audio/x-ms-wma;audio/ac3;audio/vnd.dts;",
+        "ext": [
+          "mp4", "mkv", "avi", "mov", "wmv", "flv", "webm", "m4v", "mpg", "mpeg",
+          "mp3", "flac", "wav", "aac", "ogg", "opus", "m4a", "wma", "ac3", "dts"
+        ]
+      }
+    ],
+    "windows": {
+      "allowDowngrades": true,
+      "wix": {
+        "language": "en-US"
+      },
+      "nsis": {
+        "installerIcon": "icons/icon.ico"
+      },
+      "webviewInstallMode": {
+        "type": "downloadBootstrapper",
+        "silent": true
+      }
+    },
     "android": {
       "debugApplicationIdSuffix": ".debug"
     }

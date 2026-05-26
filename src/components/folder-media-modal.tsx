@@ -1,9 +1,9 @@
-import { useState, useMemo, useCallback, useEffect } from 'react'
+import { useState, useMemo, useCallback, useEffect, useRef } from 'react'
 import { motion, AnimatePresence } from 'motion/react'
 import { LuX, LuVideo, LuMusic, LuArrowUpDown } from 'react-icons/lu'
 import type { FolderMedia, ScannedVideo, SortKey } from '../stores/local-media'
 import { useLocalMediaStore } from '../stores/local-media'
-import { useNavigate } from 'react-router-dom'
+import { usePlayerStore } from '../stores/player'
 
 interface FolderMediaModalProps {
   folder: FolderMedia
@@ -94,7 +94,6 @@ export function FolderMediaModal({ folder, onClose }: FolderMediaModalProps) {
   const [showSort, setShowSort] = useState(false)
   const thumbnailCache = useLocalMediaStore((s) => s.thumbnailCache)
   const loadVideoThumbnail = useLocalMediaStore((s) => s.loadVideoThumbnail)
-  const navigate = useNavigate()
 
   const sorted = useMemo(() => sortVideos(folder.videos, sort), [folder.videos, sort])
 
@@ -106,11 +105,14 @@ export function FolderMediaModal({ folder, onClose }: FolderMediaModalProps) {
     return () => window.removeEventListener('keydown', handler)
   }, [onClose])
 
+  const loadFile = usePlayerStore((s) => s.loadFile)
+
   const handlePlay = useCallback(
     (path: string) => {
-      navigate(`/player/video?path=${encodeURIComponent(path)}`)
+      onClose()
+      loadFile(path)
     },
-    [navigate],
+    [onClose, loadFile],
   )
 
   return (
@@ -244,16 +246,34 @@ interface MediaTileProps {
 }
 
 function MediaTile({ video, thumbnail, onLoadThumbnail, onPlay }: MediaTileProps) {
+  const tileRef = useRef<HTMLButtonElement>(null)
+
+  // Load thumbnail only when the tile scrolls into view
   useEffect(() => {
-    if (thumbnail === undefined) {
-      onLoadThumbnail()
-    }
+    if (thumbnail !== undefined) return
+
+    const el = tileRef.current
+    if (!el) return
+
+    const observer = new IntersectionObserver(
+      ([entry]) => {
+        if (entry.isIntersecting) {
+          onLoadThumbnail()
+          observer.disconnect()
+        }
+      },
+      { threshold: 0.1 },
+    )
+
+    observer.observe(el)
+    return () => observer.disconnect()
   }, [thumbnail, onLoadThumbnail])
 
   const isVid = isVideo(video.name)
 
   return (
     <motion.button
+      ref={tileRef}
       className="flex items-center gap-3 rounded-xl border border-border bg-surface p-2.5 text-left transition-colors hover:bg-surface-hover"
       variants={itemVariants}
       onClick={onPlay}

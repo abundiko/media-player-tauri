@@ -1,5 +1,7 @@
 import { create } from 'zustand'
 import { invoke } from '@tauri-apps/api/core'
+import { useLocalMediaStore } from './local-media'
+import { getResumePosition } from './resume'
 
 export interface SubtitleTrack {
   index: number
@@ -15,6 +17,7 @@ export interface PlayerState {
   transcodeUrl: string | null
   needsTranscode: boolean
   timeOffset: number
+  isWebUrl: boolean
   playing: boolean
   duration: number
   currentTime: number
@@ -22,6 +25,7 @@ export interface PlayerState {
   muted: boolean
   subtitleTracks: SubtitleTrack[]
   activeSubtitleTrack: number | null
+  isSystemFfmpeg: boolean
 
   loadFile: (path: string) => Promise<void>
   enableTranscoding: (speed?: number) => Promise<void>
@@ -34,6 +38,7 @@ export interface PlayerState {
   toggleMute: () => void
   fetchSubtitleTracks: () => Promise<void>
   setActiveSubtitleTrack: (track: number | null) => void
+  checkSystemFfmpeg: () => Promise<void>
   close: () => void
 }
 
@@ -45,6 +50,7 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
   transcodeUrl: null,
   needsTranscode: false,
   timeOffset: 0,
+  isWebUrl: false,
   playing: false,
   duration: 0,
   currentTime: 0,
@@ -52,8 +58,10 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
   muted: false,
   subtitleTracks: [],
   activeSubtitleTrack: null,
+  isSystemFfmpeg: false,
 
   loadFile: async (path: string) => {
+    const isUrl = path.startsWith('http://') || path.startsWith('https://')
     const parts = path.replace(/\\/g, '/').split('/')
     const fileName = parts[parts.length - 1] || path
 
@@ -65,28 +73,27 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
 
     const prev = state.blobUrl
     if (prev && prev.startsWith('blob:')) URL.revokeObjectURL(prev)
-    set({ blobUrl: null, streamUrl: null, transcodeUrl: null, needsTranscode: false, timeOffset: 0, subtitleTracks: [], activeSubtitleTrack: null })
+    set({ blobUrl: null, streamUrl: null, transcodeUrl: null, needsTranscode: false, timeOffset: 0, subtitleTracks: [], activeSubtitleTrack: null, isWebUrl: false })
 
-    // Try HTTP streaming server first
+    if (isUrl) {
+      console.log('[loadFile] web URL detected:', path)
+      set({ filePath: path, fileName, streamUrl: path, playing: true, currentTime: 0, duration: 0, isWebUrl: true })
+      return
+    }
+
+    // Add to history (local files only)
+    useLocalMediaStore.getState().addToHistory(path)
+
+    // Fallback: set filePath + streamUrl so the video element attempts playback.
+    // If it fails (unsupported codec), the video-player component's error handler
+    // will automatically switch to the transcoding pipeline, which streams
+    // incrementally instead of loading the whole file into RAM.
     try {
       const streamUrl = await invoke<string>('get_stream_url', { path })
       console.log('[loadFile] streamUrl:', streamUrl)
       set({ filePath: path, fileName, streamUrl, playing: true, currentTime: 0, duration: 0 })
-      return
     } catch (e) {
-      console.error('[loadFile] get_stream_url failed:', e)
-    }
-
-    // Fallback: read entire file into memory and create blob URL
-    try {
-      const bytes = await invoke<number[]>('read_file_bytes', { path })
-      const uint8 = new Uint8Array(bytes)
-      const mime = fileName.toLowerCase().endsWith('.mp4') ? 'video/mp4' : 'video/*'
-      const blobUrl = URL.createObjectURL(new Blob([uint8], { type: mime }))
-      console.log('[loadFile] blobUrl:', blobUrl, 'size:', uint8.length)
-      set({ filePath: path, fileName, blobUrl, playing: true, currentTime: 0, duration: 0 })
-    } catch (e) {
-      console.error('[loadFile] fallback also failed:', e)
+      console.error('[loadFile] get_stream_url failed, cannot load file:', e)
       set({ filePath: null, fileName: null, streamUrl: null, blobUrl: null, playing: false })
     }
   },
@@ -105,14 +112,16 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
         console.error('[player] probe_duration failed:', e)
       }
 
-      const transcodeUrl = await invoke<string>('get_transcode_url', { path: filePath, seekTime: 0, speed })
+      const resumePos = getResumePosition(filePath)
+      const seekTime = resumePos ?? 0
+      const transcodeUrl = await invoke<string>('get_transcode_url', { path: filePath, seekTime, speed })
       console.log('[player] transcodeUrl:', transcodeUrl)
       set({ 
         transcodeUrl, 
         streamUrl: null, 
         blobUrl: null, 
         needsTranscode: true, 
-        timeOffset: 0,
+        timeOffset: seekTime,
         duration: realDuration > 0 ? realDuration : get().duration
       })
       console.log('[player] transcoding enabled, new src set')
@@ -143,8 +152,8 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
   toggleMute: () => set((s) => ({ muted: !s.muted })),
 
   fetchSubtitleTracks: async () => {
-    const { filePath } = get()
-    if (!filePath) {
+    const { filePath, isWebUrl } = get()
+    if (!filePath || isWebUrl) {
       set({ subtitleTracks: [], activeSubtitleTrack: null })
       return
     }
@@ -159,12 +168,21 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
 
   setActiveSubtitleTrack: (track) => set({ activeSubtitleTrack: track }),
 
+  checkSystemFfmpeg: async () => {
+    try {
+      const isSystem = await invoke<boolean>('is_using_system_ffmpeg')
+      set({ isSystemFfmpeg: isSystem })
+    } catch (e) {
+      console.error('[player] checkSystemFfmpeg failed:', e)
+    }
+  },
+
   close: () => {
     const prev = get().blobUrl
     if (prev && prev.startsWith('blob:')) URL.revokeObjectURL(prev)
     set({
       filePath: null, fileName: null, streamUrl: null, blobUrl: null,
-      transcodeUrl: null, needsTranscode: false, timeOffset: 0, playing: false,
+      transcodeUrl: null, needsTranscode: false, timeOffset: 0, isWebUrl: false, playing: false,
       subtitleTracks: [], activeSubtitleTrack: null,
     })
   },

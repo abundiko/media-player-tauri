@@ -1,0 +1,68 @@
+Third-Party Licenses
+====================
+
+Caste bundles and depends on third-party software with separate copyright
+notices and license terms.  The licenses are listed below.
+
+---
+
+FFmpeg
+------
+Caste distributes FFmpeg (and FFprobe) as a sidecar executable for media
+transcoding and metadata extraction.
+
+  Website: https://ffmpeg.org
+  License: LGPL version 2.1 or later (or GPL version 2 or later, depending
+           on the build configuration).
+
+  The specific FFmpeg binaries bundled with Caste may be licensed under the
+  GNU Lesser General Public License (LGPL) version 2.1 or later, or the GNU
+  General Public License (GPL) version 2 or later.  You should have received
+  a copy of the corresponding license along with the FFmpeg distribution.
+  If not, see <https://www.gnu.org/licenses/>.
+
+  In accordance with the LGPL/GPL, source code for FFmpeg is available at:
+  https://ffmpeg.org/download.html
+
+  FFmpeg is free software; you can redistribute it and/or modify it under
+  the terms of the GNU Lesser General Public License as published by the
+  Free Software Foundation; either version 2.1 of the License, or (at your
+  option) any later version.
+
+  FFmpeg is distributed in the hope that it will be useful, but WITHOUT ANY
+  WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+  FOR A PARTICULAR PURPOSE.  See the GNU Lesser General Public License for
+  more details.
+
+---
+
+Rust Dependencies
+-----------------
+This application uses several Rust crates, each under its own license.
+Notable dependencies include:
+
+  - Tauri (MIT/Apache-2.0)
+  - tiny_http (Apache-2.0)
+  - tokio (MIT)
+  - serde / serde_json (MIT/Apache-2.0)
+  - urlencoding (MIT)
+  - dirs (MIT/Apache-2.0)
+
+Full license texts for Rust crate dependencies are available in the
+.cargo/registry directory or at https://crates.io.
+
+---
+
+JavaScript Dependencies
+-----------------------
+This application uses several npm packages, each under its own license.
+Notable dependencies include:
+
+  - React (MIT)
+  - React Router (MIT)
+  - Zustand (MIT)
+  - Tailwind CSS (MIT)
+  - Tauri API & CLI (MIT/Apache-2.0)
+  - Vite (MIT)
+
+Full license texts are available in node_modules/ or at https://npmjs.com.

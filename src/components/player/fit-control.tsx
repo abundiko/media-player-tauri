@@ -2,7 +2,7 @@ import { useCallback, useState, useRef, useEffect } from 'react'
 import { Button, Tooltip, TooltipTrigger } from 'react-aria-components'
 import { LuMonitor } from 'react-icons/lu'
 
-const FIT_KEY = 'media-player-fit'
+const FIT_KEY = 'caste-fit'
 
 export interface FitOption {
   id: string

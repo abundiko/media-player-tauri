@@ -1,10 +1,11 @@
-import { useRef, useEffect, useCallback, useState } from "react";
+import { useRef, useEffect, useCallback, useState, useMemo } from "react";
 import { usePlayerStore } from "../../stores/player";
 import { invoke } from "@tauri-apps/api/core";
 import { open } from "@tauri-apps/plugin-dialog";
 import { Button, Tooltip, TooltipTrigger } from "react-aria-components";
 import {
   LuHouse,
+  LuFolderOpen,
   LuPlay,
   LuPause,
   LuSkipBack,
@@ -17,6 +18,13 @@ import {
 import { PlayerControls } from "./player-controls";
 import { KeyboardHandler } from "./keyboard-handler";
 import { getSavedFit, saveFit, FIT_OPTIONS } from "./fit-control";
+import { useLocalMediaStore } from "../../stores/local-media";
+import { FolderMediaModal } from "../folder-media-modal";
+import type { FolderMedia } from "../../stores/local-media";
+import { AnimatedBackground } from "./animated-background";
+import { EqualizerPopover } from "./equalizer-popover";
+import { useEqualizerStore } from "../../stores/equalizer";
+import { getResumePosition, setResumePosition, clearResumePosition } from "../../stores/resume";
 
 const EXT_SUBTITLE_ID = -1;
 
@@ -186,6 +194,7 @@ export function VideoPlayer() {
     indicatorTimer.current = setTimeout(() => setIndicator(null), 1500);
   }, []);
 
+  const [playbackError, setPlaybackError] = useState<string | null>(null);
   const [videoDimensions, setVideoDimensions] = useState({
     width: 0,
     height: 0,
@@ -196,6 +205,17 @@ export function VideoPlayer() {
   speedRef.current = speed;
   const [subtitleCues, setSubtitleCues] = useState<VttCue[]>([]);
   const [activeCue, setActiveCue] = useState<VttCue | null>(null);
+  const [folderModal, setFolderModal] = useState<FolderMedia | null>(null);
+  const [resumePos, setResumePos] = useState<number | null>(null);
+  const videoFilters = useEqualizerStore((s) => s.video);
+
+  const filterStyle = useMemo(
+    () => ({
+      objectFit: FIT_OPTIONS.find((o) => o.id === fit)?.objectFit || "contain",
+      filter: `brightness(${videoFilters.brightness}%) contrast(${videoFilters.contrast}%) saturate(${videoFilters.saturation}%) hue-rotate(${videoFilters.hueRotate}deg) blur(${videoFilters.blur}px) grayscale(${videoFilters.grayscale}%) sepia(${videoFilters.sepia}%)`,
+    }),
+    [fit, videoFilters],
+  );
 
   const {
     filePath,
@@ -205,6 +225,7 @@ export function VideoPlayer() {
     transcodeUrl,
     needsTranscode,
     timeOffset,
+    isWebUrl,
     playing,
     currentTime,
     duration,
@@ -212,28 +233,47 @@ export function VideoPlayer() {
     setPlaying,
     setCurrentTime,
     setDuration,
-    close,
     enableTranscoding,
     fetchSubtitleTracks,
+    checkSystemFfmpeg,
+    isSystemFfmpeg,
   } = usePlayerStore();
 
-  const fallbackToBlob = useCallback(async () => {
-    if (!filePath || blobUrl) return;
-    console.log("[video] falling back to blob URL");
-    try {
-      const bytes = await invoke<number[]>("read_file_bytes", {
-        path: filePath,
-      });
-      const uint8 = new Uint8Array(bytes);
-      const mime = (fileName ?? "").toLowerCase().endsWith(".mp4")
-        ? "video/mp4"
-        : "video/*";
-      const url = URL.createObjectURL(new Blob([uint8], { type: mime }));
-      usePlayerStore.setState({ blobUrl: url, streamUrl: null });
-    } catch (e) {
-      console.error("[video] blob fallback failed:", e);
+  const currentTimeRef = useRef(currentTime);
+  currentTimeRef.current = currentTime;
+
+  useEffect(() => {
+    checkSystemFfmpeg();
+  }, [checkSystemFfmpeg]);
+
+  // Find which scanned folder contains the current file
+  const foldersState = useLocalMediaStore((s) => s.folders);
+  const explicitFolders = useLocalMediaStore((s) => s.explicitFolders);
+  const currentFolder: FolderMedia | null = (() => {
+    if (!filePath) return null;
+    let best: FolderMedia | null = null;
+    let bestLen = 0;
+    for (const [key, f] of Object.entries(foldersState)) {
+      if (f.path === "history") continue;
+      if (!explicitFolders.includes(key)) continue;
+      const sep = f.path.endsWith("/") || f.path.endsWith("\\") ? "" : "/";
+      const prefix = f.path + sep;
+      if (filePath.startsWith(prefix) && prefix.length > bestLen) {
+        best = f;
+        bestLen = prefix.length;
+      }
     }
-  }, [filePath, fileName, blobUrl]);
+    return best;
+  })();
+
+  // Fallback: if streaming fails and blob is too risky for large files,
+  // switch to the transcoding pipeline which streams incrementally.
+  const fallbackToTranscode = useCallback(async () => {
+    if (!filePath) return;
+    console.log("[video] falling back to transcoding pipeline");
+    triedTranscode.current = true;
+    enableTranscoding(speedRef.current);
+  }, [filePath, enableTranscoding]);
 
   // Determine effective source
   const src = transcodeUrl || streamUrl || blobUrl;
@@ -243,6 +283,7 @@ export function VideoPlayer() {
     if (!video || !src) return;
 
     triedTranscode.current = false;
+    setPlaybackError(null);
     console.log("[video] setting src to:", src);
     video.src = src;
     video.load();
@@ -263,7 +304,11 @@ export function VideoPlayer() {
       }
     };
 
-    const onEnded = () => setPlaying(false);
+    const onEnded = () => {
+      setPlaying(false);
+      const p = usePlayerStore.getState().filePath;
+      if (p) clearResumePosition(p);
+    };
     const onPlay = () => setPlaying(true);
     const onPause = () => setPlaying(false);
 
@@ -272,20 +317,14 @@ export function VideoPlayer() {
       console.error("[video] error:", ve?.code, ve?.message);
       setPlaying(false);
 
-      console.log(
-        "[video] onError eval: code=4",
-        ve?.code === 4,
-        "!needsTranscode",
-        !needsTranscode,
-        "!triedTranscode",
-        !triedTranscode.current,
-        "streamUrl",
-        !!streamUrl,
-        "!blobUrl",
-        !blobUrl,
-        "!transcodeUrl",
-        !transcodeUrl,
-      );
+      const isWeb = usePlayerStore.getState().isWebUrl;
+
+      if (isWeb) {
+        setPlaybackError(
+          "This URL could not be played. The server may not support direct video streaming, or the link may be invalid. YouTube and IMDb links are not yet supported.",
+        );
+        return;
+      }
 
       if (ve?.code === 4 && !needsTranscode && !triedTranscode.current) {
         console.log("[video] source not supported, switching to transcoding");
@@ -295,7 +334,7 @@ export function VideoPlayer() {
       }
 
       if (streamUrl && !blobUrl && !transcodeUrl && !triedTranscode.current) {
-        fallbackToBlob();
+        fallbackToTranscode();
       }
     };
 
@@ -359,13 +398,19 @@ export function VideoPlayer() {
       video.removeEventListener("canplay", onCanPlay);
       video.removeEventListener("stalled", onStalled);
       video.removeEventListener("waiting", onWaiting);
+      // Force the browser to close the TCP connection to the media server.
+      // Just removeAttribute('src') leaves the socket open in Chrome/WebKit,
+      // which prevents the Rust backend from detecting a disconnect — the
+      // FFmpeg transcoder keeps running as a zombie process.
+      video.src = "";
+      video.load();
+      video.removeAttribute("src");
     };
   }, [
     src,
     setPlaying,
     setCurrentTime,
     setDuration,
-    fallbackToBlob,
     needsTranscode,
     timeOffset,
     enableTranscoding,
@@ -386,32 +431,77 @@ export function VideoPlayer() {
     }
   }, [filePath, fetchSubtitleTracks]);
 
-  // Web Audio API for volume amplification
+  // Web Audio API for volume amplification + equalizer
+  // Skipped for web URLs — createMediaElementSource requires CORS access to
+  // the video's audio data, which remote servers typically don't provide.
   const audioCtxRef = useRef<AudioContext | null>(null);
   const gainNodeRef = useRef<GainNode | null>(null);
+  const eqNodesRef = useRef<BiquadFilterNode[]>([]);
+  const audioCtxStarted = useRef(false);
 
   useEffect(() => {
     const video = videoRef.current;
-    if (!video) return;
+    if (!video || audioCtxRef.current || isWebUrl) return;
 
-    if (!audioCtxRef.current) {
-      try {
-        const AudioContext =
-          window.AudioContext || (window as any).webkitAudioContext;
-        audioCtxRef.current = new AudioContext();
-        gainNodeRef.current = audioCtxRef.current.createGain();
+    try {
+      const AudioContext =
+        window.AudioContext || (window as any).webkitAudioContext;
+      audioCtxRef.current = new AudioContext();
+      gainNodeRef.current = audioCtxRef.current.createGain();
 
-        const source = audioCtxRef.current.createMediaElementSource(video);
-        source.connect(gainNodeRef.current);
-        gainNodeRef.current.connect(audioCtxRef.current.destination);
-      } catch (e) {
-        console.error(
-          "Failed to initialize Web Audio API for amplification:",
-          e,
-        );
+      const source = audioCtxRef.current.createMediaElementSource(video);
+
+      // Create 10-band equalizer filter chain with peaking filters
+      const freqs = [31, 62, 125, 250, 500, 1000, 2000, 4000, 8000, 16000];
+      const filters = freqs.map((freq) => {
+        const filter = audioCtxRef.current!.createBiquadFilter();
+        filter.type = "peaking";
+        filter.frequency.value = freq;
+        filter.Q.value = 1.41;
+        filter.gain.value = 0;
+        return filter;
+      });
+      eqNodesRef.current = filters;
+
+      // Chain: source → filter1 → ... → filter10 → gainNode → destination
+      let prev: AudioNode = source;
+      for (const filter of filters) {
+        prev.connect(filter);
+        prev = filter;
       }
+      prev.connect(gainNodeRef.current);
+      gainNodeRef.current.connect(audioCtxRef.current.destination);
+      audioCtxStarted.current = true;
+    } catch (e) {
+      console.error(
+        "Failed to initialize Web Audio API for amplification:",
+        e,
+      );
     }
-  }, []);
+
+    return () => {
+      // Close the AudioContext to free the hardware resource.
+      // Browsers have a strict limit on concurrent AudioContexts (typically 6).
+      // Without this, opening and closing videos will eventually exhaust them.
+      if (audioCtxRef.current) {
+        audioCtxRef.current.close().catch(() => {});
+        audioCtxRef.current = null;
+      }
+      gainNodeRef.current = null;
+      eqNodesRef.current = [];
+      audioCtxStarted.current = false;
+    };
+  }, [isWebUrl]);
+
+  // Sync audio equalizer band gains from store to Web Audio nodes
+  const audioBands = useEqualizerStore((s) => s.audio);
+  useEffect(() => {
+    const nodes = eqNodesRef.current;
+    if (nodes.length === 0) return;
+    nodes.forEach((node, i) => {
+      node.gain.value = audioBands[i] ?? 0;
+    });
+  }, [audioBands]);
 
   const volume = usePlayerStore((s) => s.volume);
   const muted = usePlayerStore((s) => s.muted);
@@ -419,13 +509,13 @@ export function VideoPlayer() {
   useEffect(() => {
     const video = videoRef.current;
     if (!video) return;
-    if (gainNodeRef.current) {
+    if (gainNodeRef.current && !isWebUrl) {
       video.volume = 1;
       gainNodeRef.current.gain.value = volume;
     } else {
       video.volume = Math.min(volume, 1);
     }
-  }, [volume]);
+  }, [volume, isWebUrl]);
 
   useEffect(() => {
     const video = videoRef.current;
@@ -453,6 +543,83 @@ export function VideoPlayer() {
       }
     }
   }, [playing]);
+
+  // ── Resume playback ────────────────────────────────────────────
+
+  const prevFilePathRef = useRef(filePath);
+
+  // Check for resume position when a file is loaded
+  useEffect(() => {
+    if (!filePath) {
+      setResumePos(null);
+      return;
+    }
+    const pos = getResumePosition(filePath);
+    setResumePos(pos);
+  }, [filePath]);
+
+  // Auto-seek to resume position when video can play
+  const prevSrcRef = useRef<string | undefined>(undefined);
+  useEffect(() => {
+    const video = videoRef.current;
+    if (!video || !src || !resumePos) return;
+    if (prevSrcRef.current === src) return;
+    prevSrcRef.current = src;
+
+    const seek = () => {
+      const state = usePlayerStore.getState();
+      const d = state.duration || video.duration;
+      const offset = state.timeOffset;
+
+      if (Number.isFinite(d) && d > 0) {
+        if (resumePos >= d - 10) {
+          clearResumePosition(state.filePath!);
+          setResumePos(null);
+          return;
+        }
+        if (resumePos >= d) {
+          setResumePos(null);
+          return;
+        }
+      }
+
+      // For transcoded streams, video.currentTime is relative to the transcode
+      // start position (timeOffset).  Adjust the seek target accordingly.
+      const seekTo = Math.max(0, resumePos - offset);
+      if (seekTo > 0.5) {
+        video.currentTime = seekTo;
+      }
+      video.removeEventListener("canplay", seek);
+    };
+    video.addEventListener("canplay", seek);
+    return () => video.removeEventListener("canplay", seek);
+  }, [src, resumePos]);
+
+  // Save position periodically during playback
+  useEffect(() => {
+    if (!filePath || !playing) return;
+    const interval = setInterval(() => {
+      const t = currentTimeRef.current;
+      if (t > 10) setResumePosition(filePath, t);
+    }, 15000);
+    return () => clearInterval(interval);
+  }, [filePath, playing]);
+
+  // Save position on pause
+  useEffect(() => {
+    if (!filePath || playing) return;
+    const t = currentTimeRef.current;
+    if (t > 10) setResumePosition(filePath, t);
+  }, [filePath, playing]);
+
+  // Save position when the file is closed (filePath becomes null)
+  useEffect(() => {
+    if (prevFilePathRef.current && !filePath) {
+      const t = currentTimeRef.current;
+      if (t > 10) setResumePosition(prevFilePathRef.current, t);
+    }
+    prevFilePathRef.current = filePath;
+  }, [filePath]);
 
   // Auto-hide controls on inactivity
   const showControls = useCallback(() => {
@@ -633,10 +800,25 @@ export function VideoPlayer() {
     setActiveCue(cue ?? null);
   }, [currentTime, subtitleCues, externalCues, activeSubtitleTrack]);
 
+  // Auto-dismiss resume dialog after 10s
+  useEffect(() => {
+    if (!resumePos) return;
+    const timer = setTimeout(() => setResumePos(null), 10000);
+    return () => clearTimeout(timer);
+  }, [resumePos]);
+
+  function fmtTime(s: number): string {
+    const h = Math.floor(s / 3600);
+    const m = Math.floor((s % 3600) / 60);
+    const sec = Math.floor(s % 60);
+    if (h > 0) return `${h}:${String(m).padStart(2, "0")}:${String(sec).padStart(2, "0")}`;
+    return `${m}:${String(sec).padStart(2, "0")}`;
+  }
+
   return (
     <div
       ref={containerRef}
-      className="relative flex h-full w-full flex-col overflow-hidden bg-black"
+      className="relative h-full w-full overflow-hidden bg-black"
     >
       <KeyboardHandler
         onTogglePlay={togglePlay}
@@ -645,14 +827,16 @@ export function VideoPlayer() {
         onSkipForward={skipForward}
         onShowIndicator={showIndicator}
       />
+      <AnimatedBackground />
+
       <video
         ref={videoRef}
-        className="h-full w-full"
-        style={{ objectFit: FIT_OPTIONS.find((o) => o.id === fit)?.objectFit || 'contain' }}
+        className="absolute inset-0 h-full w-full"
+        style={filterStyle}
         onDoubleClick={toggleFullscreen}
         playsInline
         preload="auto"
-        crossOrigin="anonymous"
+        crossOrigin={isWebUrl ? undefined : "anonymous"}
       />
 
       {indicator && (
@@ -687,6 +871,35 @@ export function VideoPlayer() {
         </div>
       )}
 
+      {resumePos && (
+        <div className="absolute right-4 top-20 z-30 flex items-center gap-3 rounded-lg bg-black/80 px-3 py-2.5 backdrop-blur-sm shadow-lg animate-fade-in">
+          <span className="text-xs text-white/80">
+            Continuing from <span className="font-medium text-white">{fmtTime(resumePos)}</span>
+          </span>
+          <button
+            type="button"
+            onClick={() => {
+              const video = videoRef.current;
+              if (video) video.currentTime = 0;
+              if (filePath) clearResumePosition(filePath);
+              setResumePos(null);
+            }}
+            className="rounded px-2 py-0.5 text-[11px] text-white/60 transition-colors hover:bg-white/10 hover:text-white"
+          >
+            Start over
+          </button>
+          <button
+            type="button"
+            onClick={() => setResumePos(null)}
+            className="flex items-center justify-center rounded p-0.5 text-white/40 transition-colors hover:bg-white/10 hover:text-white"
+          >
+            <svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.5">
+              <path d="M2 2l8 8M10 2l-8 8" />
+            </svg>
+          </button>
+        </div>
+      )}
+
       {activeCue && (
         <div
           className="pointer-events-none absolute inset-x-0 z-20 flex justify-center"
@@ -707,13 +920,18 @@ export function VideoPlayer() {
       )}
 
       <div
+        onMouseEnter={() => {
+          if (hideTimerRef.current) clearTimeout(hideTimerRef.current);
+          setControlsVisible(true);
+        }}
+        onMouseLeave={showControls}
         className="absolute inset-x-0 top-0 z-10 bg-linear-to-b from-black to-transparent pb-6"
         style={{
           visibility: controlsVisible ? "visible" : "hidden",
           transition: "all 0.4s",
         }}
       >
-        <div className="mx-auto flex max-w-[1600px] items-center gap-2 py-1.5">
+        <div className="mx-auto flex max-w-[1600px] items-center gap-2 px-10 py-1.5">
           <TooltipTrigger>
             <Button
               onPress={close}
@@ -725,7 +943,29 @@ export function VideoPlayer() {
               Go back
             </Tooltip>
           </TooltipTrigger>
-          <span className="truncate text-sm font-medium text-white/60">
+          {currentFolder && (
+            <TooltipTrigger>
+              <Button
+                onPress={() => setFolderModal(currentFolder)}
+                className="flex cursor-pointer items-center justify-center rounded p-1 text-white/50 transition-colors hover:bg-white/10 hover:text-white"
+              >
+                <LuFolderOpen size={16} />
+              </Button>
+              <Tooltip className="rounded bg-gray-800 px-2 py-1 text-xs text-white shadow-lg">
+                {currentFolder.name}
+              </Tooltip>
+            </TooltipTrigger>
+          )}
+          <EqualizerPopover />
+          {isSystemFfmpeg && (
+            <TooltipTrigger>
+              <div className="h-2 w-2 rounded-full bg-red-500 shadow-[0_0_8px_rgba(239,68,68,0.8)]" />
+              <Tooltip className="rounded bg-gray-800 px-2 py-1 text-xs text-white shadow-lg">
+                Using system FFmpeg fallback
+              </Tooltip>
+            </TooltipTrigger>
+          )}
+          <span className="truncate text-sm font-semibold text-white/60">
             {fileName}
           </span>
           {needsTranscode && (
@@ -774,6 +1014,45 @@ export function VideoPlayer() {
           />
         </div>
       </div>
+
+      {folderModal && (
+        <FolderMediaModal
+          folder={folderModal}
+          onClose={() => setFolderModal(null)}
+        />
+      )}
+
+      {playbackError && (
+        <div className="absolute inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm">
+          <div className="mx-4 flex max-w-md flex-col gap-4 rounded-2xl border border-border bg-surface p-6 shadow-2xl">
+            <h3 className="text-base font-semibold text-text">
+              Playback Error
+            </h3>
+            <p className="text-sm leading-relaxed text-text-muted">
+              {playbackError}
+            </p>
+            <div className="flex justify-end gap-3">
+              <button
+                type="button"
+                onClick={() => setPlaybackError(null)}
+                className="rounded-lg bg-surface-alt px-4 py-2 text-sm font-medium text-text transition-colors hover:opacity-90"
+              >
+                Dismiss
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setPlaybackError(null);
+                  close();
+                }}
+                className="rounded-lg bg-text px-4 py-2 text-sm font-medium text-surface transition-colors hover:opacity-90"
+              >
+                Go back
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

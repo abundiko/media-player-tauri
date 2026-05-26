@@ -1,10 +1,14 @@
 [package]
 name = "app"
 version = "0.1.0"
-description = "A Tauri App"
-authors = ["you"]
-license = ""
-repository = ""
+description = "Caste Media Player"
+authors = ["abundiko"]
+license = "MIT"
+repository = "https://github.com/abundiko/caste"
+homepage = "https://github.com/abundiko/caste"
+readme = "../README.md"
+keywords = ["media", "player", "video", "audio", "tauri"]
+categories = ["multimedia::video"]
 edition = "2021"
 rust-version = "1.77.2"
 
@@ -24,6 +28,7 @@ log = "0.4"
 tauri = { version = "2.11.2", features = [] }
 tauri-plugin-log = "2"
 tauri-plugin-dialog = "2.7.1"
+tokio = { version = "1", features = ["sync"] }
 urlencoding = "2.1.3"
 tiny_http = "0.12.0"
-base64 = "0.22"
+dirs = "5"

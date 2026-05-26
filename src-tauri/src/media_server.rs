@@ -1,8 +1,10 @@
+use std::collections::HashMap;
 use std::fs::File;
 use std::io::{Read, Seek, SeekFrom};
 use std::path::Path;
+use std::process::{Child, Command, Stdio};
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 use tiny_http::{Header, Method, Response, Server, StatusCode};
 
 fn mime_type(path: &str) -> &str {
@@ -44,7 +46,16 @@ fn common_headers() -> Vec<Header> {
     ]
 }
 
-fn handle_request(request: tiny_http::Request) {
+fn kill_child(mut child: Child) {
+    let _ = child.kill();
+    let _ = child.wait();
+}
+
+#[allow(clippy::needless_pass_by_value)]
+fn handle_request(
+    request: tiny_http::Request,
+    transcode_children: Arc<Mutex<HashMap<String, (u32, Child)>>>,
+) {
     // Handle CORS preflight
     if *request.method() == Method::Options {
         let resp = Response::new(
@@ -62,13 +73,19 @@ fn handle_request(request: tiny_http::Request) {
 
     // Route /transcode requests to the transcode handler
     if url.starts_with("/transcode?") {
-        handle_transcode(request, &url);
+        handle_transcode(request, &url, transcode_children);
         return;
     }
 
     // Route /subtitle requests to the subtitle handler
     if url.starts_with("/subtitle?") {
         handle_subtitle(request, &url);
+        return;
+    }
+
+    // Route /thumb requests to serve cached thumbnail images
+    if url.starts_with("/thumb?") {
+        handle_thumb(request, &url);
         return;
     }
 
@@ -198,7 +215,11 @@ fn speed_audio_filter(speed: f64) -> String {
 
 /// Transcode video on-the-fly via FFmpeg to H.264 fragmented MP4.
 /// URL format: /transcode?path=<url-encoded-path>&t=<seek-seconds>&s=<speed>
-fn handle_transcode(request: tiny_http::Request, url: &str) {
+fn handle_transcode(
+    request: tiny_http::Request,
+    url: &str,
+    transcode_children: Arc<Mutex<HashMap<String, (u32, Child)>>>,
+) {
     let query = url.strip_prefix("/transcode?").unwrap_or("");
     let mut path = String::new();
     let mut seek_secs: f64 = 0.0;
@@ -220,16 +241,35 @@ fn handle_transcode(request: tiny_http::Request, url: &str) {
         return;
     }
 
+    // Kill any existing FFmpeg child for this file path (e.g. from a previous seek)
+    {
+        let mut map = transcode_children.lock().unwrap();
+        if let Some((_pid, old)) = map.remove(&path) {
+            std::thread::spawn(|| kill_child(old));
+        }
+    }
+
     let mut args: Vec<String> = vec![
         "-hide_banner".into(), "-loglevel".into(), "error".into(),
     ];
     if seek_secs > 0.0 {
-        args.extend(["-ss".into(), format!("{:.3}", seek_secs)]);
+        // Coarse input seek: jump to ~1s before target for speed
+        let coarse = (seek_secs - 1.0).max(0.0);
+        args.extend(["-ss".into(), format!("{:.3}", coarse)]);
     }
     args.extend([
-        "-i".into(), path,
+        "-i".into(), path.clone(),
+    ]);
+    if seek_secs > 0.0 {
+        // Fine output seek: frame-accurate cut at the exact target
+        // Prevents AAC encoder priming artifacts (beep/glitch on seek)
+        let fine = seek_secs - (seek_secs - 1.0).max(0.0);
+        args.extend(["-ss".into(), format!("{:.3}", fine)]);
+    }
+    args.extend([
         "-c:v".into(), "libx264".into(),
         "-preset".into(), "ultrafast".into(),
+        "-tune".into(), "zerolatency".into(),
         "-crf".into(), "23".into(),
     ]);
     if speed != 1.0 {
@@ -247,10 +287,10 @@ fn handle_transcode(request: tiny_http::Request, url: &str) {
         "pipe:1".into(),
     ]);
 
-    let mut child = match std::process::Command::new("ffmpeg")
+    let mut child = match Command::new(crate::get_ffmpeg_path())
         .args(&args)
-        .stdout(std::process::Stdio::piped())
-        .stderr(std::process::Stdio::null())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::null())
         .spawn()
     {
         Ok(c) => c,
@@ -267,20 +307,38 @@ fn handle_transcode(request: tiny_http::Request, url: &str) {
         None => return,
     };
 
+    // Store the child in the shared map so it can be killed on re-seek.
+    // Remember our process ID so the cleanup below can verify it hasn't been
+    // replaced by a newer seek before killing.
+    let my_pid = child.id();
+    transcode_children.lock().unwrap().insert(path.clone(), (my_pid, child));
+
     let mut headers = common_headers();
     headers.push(ct_header("video/mp4"));
 
     let resp = Response::new(StatusCode(200), headers, stdout, None, None);
     let _ = request.respond(resp);
 
-    // Clean up child process after response is sent
-    let _ = child.kill();
-    let _ = child.wait();
+    // Response stream finished (client disconnected or transcoding completed).
+    // Only remove and kill the child if it is still OUR process (same PID).
+    // A newer seek may have already replaced the entry with a fresh FFmpeg
+    // process — killing that one would be a race-condition bug.
+    {
+        let mut map = transcode_children.lock().unwrap();
+        if let Some((stored_pid, _)) = map.get(&path) {
+            if *stored_pid == my_pid {
+                let (_, child) = map.remove(&path).unwrap();
+                // kill on a background thread to avoid blocking the handler
+                std::thread::spawn(|| kill_child(child));
+            }
+        }
+    }
 }
 
 pub struct MediaServer {
     pub port: u16,
     running: Arc<AtomicBool>,
+    transcode_children: Arc<Mutex<HashMap<String, (u32, Child)>>>,
 }
 
 impl MediaServer {
@@ -289,7 +347,10 @@ impl MediaServer {
         let port = server.server_addr().to_ip().map(|a| a.port()).unwrap_or(0);
         let running = Arc::new(AtomicBool::new(true));
         let running_clone = running.clone();
+        let transcode_children: Arc<Mutex<HashMap<String, (u32, Child)>>> =
+            Arc::new(Mutex::new(HashMap::new()));
 
+        let children_for_thread = transcode_children.clone();
         std::thread::spawn(move || {
             loop {
                 if !running_clone.load(Ordering::Relaxed) {
@@ -305,19 +366,27 @@ impl MediaServer {
                     }
                 };
 
+                let children = children_for_thread.clone();
                 std::thread::spawn(|| {
-                    handle_request(request);
+                    handle_request(request, children);
                 });
             }
         });
 
-        Ok(MediaServer { port, running })
+        Ok(MediaServer { port, running, transcode_children })
     }
 }
 
 impl Drop for MediaServer {
     fn drop(&mut self) {
         self.running.store(false, Ordering::Relaxed);
+        let children: Vec<Child> = {
+            let mut map = self.transcode_children.lock().unwrap();
+            map.drain().map(|(_, (_pid, c))| c).collect()
+        };
+        for child in children {
+            kill_child(child);
+        }
     }
 }
 
@@ -342,7 +411,7 @@ fn handle_subtitle(request: tiny_http::Request, url: &str) {
         return;
     }
 
-    let mut cmd = std::process::Command::new("ffmpeg");
+    let mut cmd = Command::new(crate::get_ffmpeg_path());
     cmd.args([
         "-hide_banner",
         "-loglevel",
@@ -356,8 +425,8 @@ fn handle_subtitle(request: tiny_http::Request, url: &str) {
         "pipe:1",
     ]);
 
-    cmd.stdout(std::process::Stdio::piped());
-    cmd.stderr(std::process::Stdio::piped());
+    cmd.stdout(Stdio::piped());
+    cmd.stderr(Stdio::piped());
 
     let mut child = match cmd.spawn() {
         Ok(c) => c,
@@ -373,7 +442,6 @@ fn handle_subtitle(request: tiny_http::Request, url: &str) {
     // Log stderr in a background thread so we can debug ffmpeg failures
     if let Some(stderr) = child.stderr.take() {
         std::thread::spawn(move || {
-            use std::io::Read;
             let mut buf = String::new();
             let _ = std::io::BufReader::new(stderr).read_to_string(&mut buf);
             if !buf.is_empty() {
@@ -395,14 +463,50 @@ fn handle_subtitle(request: tiny_http::Request, url: &str) {
 
     let _ = request.respond(resp);
 
-    match child.wait() {
-        Ok(status) => {
-            if !status.success() {
-                log::error!("handle_subtitle: ffmpeg exited with status {}", status);
-            }
-        }
-        Err(e) => {
-            log::error!("handle_subtitle: failed to wait for ffmpeg: {}", e);
+    // Always kill the child after the response stream ends.
+    // If the client disconnected early, ffmpeg may still be running;
+    // kill() is harmless if it already exited.
+    kill_child(child);
+}
+
+/// Serve a cached thumbnail image from disk.
+fn handle_thumb(request: tiny_http::Request, url: &str) {
+    let query = url.split('?').nth(1).unwrap_or("");
+    let mut thumb_path = String::new();
+
+    for pair in query.split('&') {
+        if let Some(val) = pair.strip_prefix("path=") {
+            thumb_path = urlencoding::decode(val).unwrap_or_default().to_string();
         }
     }
+
+    if thumb_path.is_empty() || !Path::new(&thumb_path).exists() {
+        let _ = request.respond(Response::from_string("Not Found").with_status_code(404));
+        return;
+    }
+
+    let file = match File::open(&thumb_path) {
+        Ok(f) => f,
+        Err(_) => {
+            let _ = request.respond(Response::from_string("Error").with_status_code(500));
+            return;
+        }
+    };
+
+    let file_len = std::fs::metadata(&thumb_path).map(|m| m.len()).unwrap_or(0);
+
+    let mut headers = common_headers();
+    headers.push(ct_header("image/jpeg"));
+    // Cache thumbnails aggressively — they rarely change
+    headers.push(Header::from_bytes(b"Cache-Control", b"public, max-age=86400").unwrap());
+
+    let resp = Response::new(
+        StatusCode(200),
+        headers,
+        file,
+        Some(file_len as usize),
+        None,
+    );
+
+    let _ = request.respond(resp);
 }

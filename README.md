@@ -1,73 +1,41 @@
-# React + TypeScript + Vite
+# Caste
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+A desktop media player with custom controls, animated backgrounds, equalizer,
+resume playback, and native window behavior. Built with Tauri and React.
 
-Currently, two official plugins are available:
+## Features
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
+- **Custom title bar** — macOS-style traffic light controls, draggable region
+- **Animated background** — canvas-rendered colorful blobs with frosted-glass overlay
+- **Video equalizer** — brightness, contrast, saturation, hue, blur, grayscale, sepia
+- **Audio equalizer** — 10-band peaking filter (31 Hz – 16 kHz) with presets
+- **Resume playback** — persists last position (10-second granularity)
+- **Transcoding** — automatic FFmpeg fallback for unsupported codecs
+- **Auto-hide controls** — hover to reveal, hides after inactivity
+- **Keyboard shortcuts** — space, arrows, escape, fullscreen
+- **Drag and drop** — drag media files directly into the window
+- **Folder scanning** — browse local media folders with thumbnail previews
+- **Playback speed** — 0.25× to 4×
+- **Subtitles** — embedded subtitle tracks + external SRT/VTT files
 
-## React Compiler
+## Development
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
-
-## Expanding the ESLint configuration
-
-If you are developing a production application, we recommend updating the configuration to enable type-aware lint rules:
-
-```js
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
-
-      // Remove tseslint.configs.recommended and replace with this
-      tseslint.configs.recommendedTypeChecked,
-      // Alternatively, use this for stricter rules
-      tseslint.configs.strictTypeChecked,
-      // Optionally, add this for stylistic rules
-      tseslint.configs.stylisticTypeChecked,
-
-      // Other configs...
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
+```bash
+npm install
+npm run tauri dev
 ```
 
-You can also install [eslint-plugin-react-x](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-x) and [eslint-plugin-react-dom](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-dom) for React-specific lint rules:
+## Building
 
-```js
-// eslint.config.js
-import reactX from 'eslint-plugin-react-x'
-import reactDom from 'eslint-plugin-react-dom'
-
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
-      // Enable lint rules for React
-      reactX.configs['recommended-typescript'],
-      // Enable lint rules for React DOM
-      reactDom.configs.recommended,
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
+```bash
+npm run tauri build
 ```
+
+## License
+
+MIT. See [LICENSE](./LICENSE).
+
+## Third-Party Licenses
+
+This application bundles FFmpeg for media transcoding. See
+[THIRD-PARTY-LICENSES](./THIRD-PARTY-LICENSES) for details.

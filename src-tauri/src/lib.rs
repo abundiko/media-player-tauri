@@ -3,9 +3,43 @@ mod media_server;
 use std::path::Path;
 use tauri::State;
 use serde::{Deserialize, Serialize};
-use base64::Engine;
 
 struct ServerPort(u16);
+
+/// Counting semaphore to limit concurrent ffmpeg thumbnail processes.
+struct ThumbSemaphore(tokio::sync::Semaphore);
+
+/// Directory where cached thumbnails are stored.
+struct ThumbCacheDir(String);
+
+pub fn get_ffmpeg_path() -> String {
+    if let Ok(mut exe_path) = std::env::current_exe() {
+        exe_path.pop();
+        let bin_name = if cfg!(target_os = "windows") { "caste-ffmpeg.exe" } else { "caste-ffmpeg" };
+        let sidecar = exe_path.join(bin_name);
+        if sidecar.exists() {
+            return sidecar.to_string_lossy().to_string();
+        }
+    }
+    "ffmpeg".to_string()
+}
+
+pub fn get_ffprobe_path() -> String {
+    if let Ok(mut exe_path) = std::env::current_exe() {
+        exe_path.pop();
+        let bin_name = if cfg!(target_os = "windows") { "caste-ffprobe.exe" } else { "caste-ffprobe" };
+        let sidecar = exe_path.join(bin_name);
+        if sidecar.exists() {
+            return sidecar.to_string_lossy().to_string();
+        }
+    }
+    "ffprobe".to_string()
+}
+
+#[tauri::command]
+fn is_using_system_ffmpeg() -> bool {
+    get_ffmpeg_path() == "ffmpeg"
+}
 
 #[tauri::command]
 fn get_stream_url(path: String, port: State<ServerPort>) -> Result<String, String> {
@@ -29,7 +63,7 @@ fn get_transcode_url(path: String, seek_time: f64, speed: f64, port: State<Serve
 
 #[tauri::command]
 fn probe_duration(path: String) -> Result<f64, String> {
-    let output = std::process::Command::new("ffprobe")
+    let output = std::process::Command::new(get_ffprobe_path())
         .args([
             "-v", "error",
             "-show_entries", "format=duration",
@@ -64,7 +98,7 @@ struct FfprobeStream {
 
 #[tauri::command]
 fn get_subtitle_tracks(path: String) -> Result<Vec<SubtitleTrack>, String> {
-    let output = std::process::Command::new("ffprobe")
+    let output = std::process::Command::new(get_ffprobe_path())
         .args([
             "-v", "error",
             "-select_streams", "s",
@@ -127,10 +161,46 @@ fn is_media_ext(path: &Path) -> bool {
 }
 
 #[tauri::command]
-fn scan_video_folder(path: String) -> Result<Vec<ScannedVideo>, String> {
-    let mut videos = Vec::new();
-    scan_directory(&Path::new(&path), &mut videos, 0)?;
-    Ok(videos)
+async fn get_video_metadata(path: String) -> Result<ScannedVideo, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let p = Path::new(&path);
+        if !p.exists() || !p.is_file() {
+            return Err("File not found or not a file".into());
+        }
+
+        let name = p
+            .file_name()
+            .unwrap_or_default()
+            .to_string_lossy()
+            .to_string();
+        let meta = std::fs::metadata(p).ok();
+        let size = meta.as_ref().map(|m| m.len()).unwrap_or(0);
+        let modified = meta
+            .and_then(|m| m.modified().ok())
+            .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
+            .map(|d| d.as_secs())
+            .unwrap_or(0);
+
+        Ok(ScannedVideo {
+            path,
+            name,
+            size,
+            modified,
+        })
+    })
+    .await
+    .map_err(|e| format!("metadata task crashed: {}", e))?
+}
+
+#[tauri::command]
+async fn scan_video_folder(path: String) -> Result<Vec<ScannedVideo>, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let mut videos = Vec::new();
+        scan_directory(Path::new(&path), &mut videos, 0)?;
+        Ok(videos)
+    })
+    .await
+    .map_err(|e| format!("scan task crashed: {}", e))?
 }
 
 fn scan_directory(dir: &Path, videos: &mut Vec<ScannedVideo>, depth: usize) -> Result<(), String> {
@@ -163,9 +233,9 @@ fn scan_directory(dir: &Path, videos: &mut Vec<ScannedVideo>, depth: usize) -> R
                 .unwrap_or_default()
                 .to_string_lossy()
                 .to_string();
-            let size = std::fs::metadata(&path).ok().map(|m| m.len()).unwrap_or(0);
-            let modified = std::fs::metadata(&path)
-                .ok()
+            let meta = std::fs::metadata(&path).ok();
+            let size = meta.as_ref().map(|m| m.len()).unwrap_or(0);
+            let modified = meta
                 .and_then(|m| m.modified().ok())
                 .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
                 .map(|d| d.as_secs())
@@ -183,47 +253,131 @@ fn scan_directory(dir: &Path, videos: &mut Vec<ScannedVideo>, depth: usize) -> R
     Ok(())
 }
 
-#[tauri::command]
-fn get_video_thumbnail(path: String) -> Result<String, String> {
-    for seek in ["00:00:05", "00:00:02", "00:00:00"] {
-        let output = std::process::Command::new("ffmpeg")
-            .args([
-                "-i", &path,
-                "-ss", seek,
-                "-vframes", "1",
-                "-f", "image2pipe",
-                "-vcodec", "mjpeg",
-                "-q:v", "5",
-                "-an",
-                "pipe:1",
-            ])
-            .output()
-            .map_err(|e| format!("ffmpeg failed: {}", e))?;
+/// Compute a stable cache filename from a video path.
+fn thumb_cache_name(video_path: &str) -> String {
+    use std::collections::hash_map::DefaultHasher;
+    use std::hash::{Hash, Hasher};
+    let mut hasher = DefaultHasher::new();
+    video_path.hash(&mut hasher);
+    format!("{:016x}.jpg", hasher.finish())
+}
 
-        if output.status.success() && !output.stdout.is_empty() {
-            let b64 = base64::engine::general_purpose::STANDARD.encode(&output.stdout);
-            return Ok(format!("data:image/jpeg;base64,{}", b64));
-        }
+/// Generate a thumbnail for a video file. Returns an HTTP URL to the cached thumbnail.
+/// Uses a tokio semaphore to limit concurrent ffmpeg processes.
+#[tauri::command]
+async fn get_video_thumbnail(
+    path: String,
+    sem: State<'_, ThumbSemaphore>,
+    cache_dir: State<'_, ThumbCacheDir>,
+    port: State<'_, ServerPort>,
+) -> Result<String, String> {
+    let cache_name = thumb_cache_name(&path);
+    let cache_path = format!("{}/{}", cache_dir.0, cache_name);
+    let server_port = port.0;
+
+    // Check disk cache first — no ffmpeg needed
+    if Path::new(&cache_path).exists() {
+        let encoded = urlencoding::encode(&cache_path);
+        return Ok(format!("http://127.0.0.1:{}/thumb?path={}", server_port, encoded));
     }
 
-    Err("could not extract thumbnail".to_string())
+    // Acquire semaphore permit (blocks asynchronously when capacity reached)
+    let _permit = sem.0.acquire().await.map_err(|e| format!("semaphore error: {}", e))?;
+
+    // Double-check after acquiring permit
+    if Path::new(&cache_path).exists() {
+        let encoded = urlencoding::encode(&cache_path);
+        return Ok(format!("http://127.0.0.1:{}/thumb?path={}", server_port, encoded));
+    }
+
+    let path_clone = path.clone();
+    let cache_path_clone = cache_path.clone();
+
+    // All blocking work happens on the blocking thread pool
+    tauri::async_runtime::spawn_blocking(move || {
+        // Try multiple seek positions — -ss BEFORE -i for fast input seeking
+        let mut success = false;
+        let ffmpeg_path = get_ffmpeg_path();
+        for seek in ["5", "2", "0"] {
+            let result = std::process::Command::new(&ffmpeg_path)
+                .args([
+                    "-ss", seek,
+                    "-i", &path_clone,
+                    "-vframes", "1",
+                    "-vf", "scale=320:-1",
+                    "-q:v", "8",
+                    "-y",
+                    &cache_path_clone,
+                ])
+                .stdout(std::process::Stdio::null())
+                .stderr(std::process::Stdio::null())
+                .output();
+
+            if let Ok(output) = result {
+                if output.status.success() && Path::new(&cache_path_clone).exists() {
+                    success = true;
+                    break;
+                }
+            }
+        }
+
+        if success {
+            Ok(())
+        } else {
+            Err("could not extract thumbnail".to_string())
+        }
+    })
+    .await
+    .map_err(|e| format!("thumbnail task crashed: {}", e))??;
+
+    let encoded = urlencoding::encode(&cache_path);
+    Ok(format!("http://127.0.0.1:{}/thumb?path={}", server_port, encoded))
+}
+
+fn ensure_cache_dir() -> String {
+    let cache_dir = dirs::cache_dir()
+        .unwrap_or_else(|| std::path::PathBuf::from("/tmp"))
+        .join("caste")
+        .join("thumbs");
+    let _ = std::fs::create_dir_all(&cache_dir);
+    cache_dir.to_string_lossy().to_string()
+}
+
+#[tauri::command]
+fn get_startup_file() -> Result<Option<String>, String> {
+    // The first argument is the executable path.
+    // The second argument is usually the file path passed by the OS when opened via file association.
+    let args: Vec<String> = std::env::args().collect();
+    if args.len() > 1 {
+        let potential_file = &args[1];
+        if Path::new(potential_file).exists() && Path::new(potential_file).is_file() {
+            return Ok(Some(potential_file.clone()));
+        }
+    }
+    Ok(None)
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     let server = media_server::MediaServer::start().expect("Failed to start media server");
+    let cache_dir = ensure_cache_dir();
 
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
         .manage(ServerPort(server.port))
+        .manage(ThumbSemaphore(tokio::sync::Semaphore::new(2)))
+        .manage(ThumbCacheDir(cache_dir))
         .invoke_handler(tauri::generate_handler![
             get_stream_url,
             read_file_bytes,
             get_transcode_url,
             probe_duration,
             get_subtitle_tracks,
+            get_video_metadata,
             scan_video_folder,
             get_video_thumbnail,
+            get_startup_file,
+            is_using_system_ffmpeg,
         ])
         .setup(|app| {
             if cfg!(debug_assertions) {

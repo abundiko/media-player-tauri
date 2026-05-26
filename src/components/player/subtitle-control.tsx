@@ -58,7 +58,7 @@ export function SubtitleControl({ onPickFile, externalFileName }: SubtitleContro
         {open && (
           <div
             ref={menuRef}
-            className="absolute bottom-full right-0 mb-2 min-w-[180px] overflow-hidden rounded-lg border border-border py-1 shadow-lg backdrop-blur-xl"
+            className="absolute bottom-full right-0 mb-2 min-w-[180px] max-h-[300px] overflow-y-auto rounded-lg border border-border py-1 shadow-lg backdrop-blur-xl"
             style={{ background: 'var(--surface-alt)' }}
           >
             <button
@@ -102,7 +102,7 @@ export function SubtitleControl({ onPickFile, externalFileName }: SubtitleContro
       {open && (
         <div
           ref={menuRef}
-          className="absolute bottom-full right-0 mb-2 min-w-[180px] overflow-hidden rounded-lg border border-border py-1 shadow-lg backdrop-blur-xl"
+          className="absolute bottom-full right-0 mb-2 min-w-[180px] max-h-[300px] overflow-y-auto rounded-lg border border-border py-1 shadow-lg backdrop-blur-xl"
           style={{ background: 'var(--surface-alt)' }}
         >
           <button

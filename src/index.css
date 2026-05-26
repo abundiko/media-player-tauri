@@ -57,14 +57,55 @@
   --ring: #525252;
 }
 
-html {
-  -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
+html, body {
+  margin: 0;
+  padding: 0;
+  height: 100vh;
+  width: 100vw;
+  background: transparent !important;
+  user-select: none;
+  -moz-user-select: none;
+  -webkit-user-select: none;
+  -webkit-user-call: none;
+  -webkit-user-drag: none;
+}
+
+img {
+  -webkit-user-drag: none;
+  user-drag: none;
+}
+
+@font-face {
+  font-family: "Urbanist";
+  src: url("/fonts/Urbanist-VariableFont_wght.ttf") format("truetype");
+  font-weight: 100 900;
+  font-style: normal;
 }
 
 body {
-  margin: 0;
-  font-family: system-ui, -apple-system, sans-serif;
+  font-family: "Urbanist", system-ui, -apple-system, sans-serif;
+}
+
+*:focus {
+  outline: none;
+}
+
+*:focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: 2px;
+}
+
+#root {
+  height: 100vh;
+  width: 100vw;
   background: var(--surface);
   color: var(--text);
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+#root:not(.maximized) {
+  border-radius: 12px;
+  border: 1px solid var(--border);
 }

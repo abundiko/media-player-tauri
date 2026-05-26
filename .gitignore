@@ -22,3 +22,7 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+# big binaries
+src-tauri/bin/
+src-tauri/target/release

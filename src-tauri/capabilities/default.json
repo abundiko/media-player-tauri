@@ -2,9 +2,7 @@
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "default",
   "description": "enables the default permissions",
-  "windows": [
-    "main"
-  ],
+  "windows": ["main"],
   "permissions": [
     "core:default",
     "core:window:allow-close",
@@ -12,6 +10,10 @@
     "core:window:allow-start-dragging",
     "core:window:allow-toggle-maximize",
     "core:window:allow-is-maximized",
+    "core:window:allow-set-size",
+    "core:window:allow-outer-size",
+    "core:window:allow-set-position",
+    "core:window:allow-outer-position",
     "dialog:default",
     "dialog:allow-open"
   ]

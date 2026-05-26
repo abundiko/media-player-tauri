@@ -1,62 +1,139 @@
-import { open } from '@tauri-apps/plugin-dialog'
-import { LuFileUp, LuLink, LuFolderOpen, LuSettings } from 'react-icons/lu'
-import { usePlayerStore } from '../stores/player'
+import { open } from "@tauri-apps/plugin-dialog";
+import { LuFileUp, LuLink, LuFolderOpen } from "react-icons/lu";
+import { usePlayerStore } from "../stores/player";
 
 const MEDIA_FILTERS = [
-  { name: 'Media files', extensions: ['mp4', 'mkv', 'avi', 'mov', 'wmv', 'flv', 'webm', 'm4v', 'mpg', 'mpeg', 'mp3', 'flac', 'wav', 'aac', 'ogg', 'opus', 'm4a', 'wma', 'ac3', 'dts'] },
-  { name: 'Video files', extensions: ['mp4', 'mkv', 'avi', 'mov', 'wmv', 'flv', 'webm', 'm4v', 'mpg', 'mpeg'] },
-  { name: 'Audio files', extensions: ['mp3', 'flac', 'wav', 'aac', 'ogg', 'opus', 'm4a', 'wma', 'ac3', 'dts'] },
-  { name: 'All files', extensions: ['*'] },
-]
+  {
+    name: "Media files",
+    extensions: [
+      "mp4",
+      "mkv",
+      "avi",
+      "mov",
+      "wmv",
+      "flv",
+      "webm",
+      "m4v",
+      "mpg",
+      "mpeg",
+      "mp3",
+      "flac",
+      "wav",
+      "aac",
+      "ogg",
+      "opus",
+      "m4a",
+      "wma",
+      "ac3",
+      "dts",
+    ],
+  },
+  {
+    name: "Video files",
+    extensions: [
+      "mp4",
+      "mkv",
+      "avi",
+      "mov",
+      "wmv",
+      "flv",
+      "webm",
+      "m4v",
+      "mpg",
+      "mpeg",
+    ],
+  },
+  {
+    name: "Audio files",
+    extensions: [
+      "mp3",
+      "flac",
+      "wav",
+      "aac",
+      "ogg",
+      "opus",
+      "m4a",
+      "wma",
+      "ac3",
+      "dts",
+    ],
+  },
+  { name: "All files", extensions: ["*"] },
+];
 
 export const MEDIA_EXTS = new Set([
-  '.mp4', '.mkv', '.avi', '.mov', '.wmv', '.flv', '.webm', '.m4v', '.mpg', '.mpeg',
-  '.mp3', '.flac', '.wav', '.aac', '.ogg', '.opus', '.m4a', '.wma', '.ac3', '.dts',
-])
+  ".mp4",
+  ".mkv",
+  ".avi",
+  ".mov",
+  ".wmv",
+  ".flv",
+  ".webm",
+  ".m4v",
+  ".mpg",
+  ".mpeg",
+  ".mp3",
+  ".flac",
+  ".wav",
+  ".aac",
+  ".ogg",
+  ".opus",
+  ".m4a",
+  ".wma",
+  ".ac3",
+  ".dts",
+]);
 
 export function isMediaFile(name: string): boolean {
-  const dot = name.lastIndexOf('.')
-  if (dot === -1) return false
-  return MEDIA_EXTS.has(name.substring(dot).toLowerCase())
+  const dot = name.lastIndexOf(".");
+  if (dot === -1) return false;
+  return MEDIA_EXTS.has(name.substring(dot).toLowerCase());
 }
 
 interface ActionButton {
-  label: string
-  icon: typeof LuFileUp
-  description: string
+  label: string;
+  icon: typeof LuFileUp;
+  description: string;
 }
 
 const actions: ActionButton[] = [
-  { label: 'Select file', icon: LuFileUp, description: 'Browse local media files' },
-  { label: 'Web URL', icon: LuLink, description: 'Stream from a web address' },
-  { label: 'Select folder', icon: LuFolderOpen, description: 'Open all media in a folder' },
-  { label: 'Settings', icon: LuSettings, description: 'Configure preferences' },
-]
+  {
+    label: "Select file",
+    icon: LuFileUp,
+    description: "Browse local media files",
+  },
+  { label: "Web URL", icon: LuLink, description: "Stream from a web address" },
+  {
+    label: "Select folder",
+    icon: LuFolderOpen,
+    description: "Open all media in a folder",
+  },
+  // { label: 'Settings', icon: LuSettings, description: 'Configure preferences' },
+];
 
 export function DropZone() {
-  const loadFile = usePlayerStore((s) => s.loadFile)
+  const loadFile = usePlayerStore((s) => s.loadFile);
 
   const handleAction = async (label: string) => {
     switch (label) {
-      case 'Select file': {
+      case "Select file": {
         const selected = await open({
           multiple: false,
           filters: MEDIA_FILTERS,
-        })
+        });
         if (selected) {
-          loadFile(selected)
+          loadFile(selected);
         }
-        break
+        break;
       }
-      case 'Settings': {
-        break
+      case "Settings": {
+        break;
       }
     }
-  }
+  };
 
   return (
     <div className="relative flex flex-col items-center justify-center gap-8 rounded-xl border-2 border-dashed border-border px-8 py-16 transition-all duration-200">
-
       <div className="flex flex-col items-center gap-2">
         <LuFileUp size={36} className="text-text-muted" />
         <p className="text-sm text-text-muted">Drop a media file here</p>
@@ -79,5 +156,5 @@ export function DropZone() {
         ))}
       </div>
     </div>
-  )
+  );
 }
