@@ -37,7 +37,6 @@ fn ct_header(mime: &str) -> Header {
 /// Common headers added to every response for cross-origin access and caching.
 fn common_headers() -> Vec<Header> {
     vec![
-        Header::from_bytes(b"Accept-Ranges", b"bytes").unwrap(),
         Header::from_bytes(b"Access-Control-Allow-Origin", b"*").unwrap(),
         Header::from_bytes(b"Access-Control-Allow-Methods", b"GET, HEAD, OPTIONS").unwrap(),
         Header::from_bytes(b"Access-Control-Allow-Headers", b"Range").unwrap(),
@@ -155,6 +154,7 @@ fn handle_request(
 
             let mut headers = common_headers();
             headers.push(ct);
+            headers.push(Header::from_bytes(b"Accept-Ranges", b"bytes").unwrap());
             headers.push(
                 Header::from_bytes(b"Content-Range", cr_value.as_bytes()).unwrap(),
             );
@@ -181,6 +181,7 @@ fn handle_request(
 
     let mut headers = common_headers();
     headers.push(ct);
+    headers.push(Header::from_bytes(b"Accept-Ranges", b"bytes").unwrap());
 
     let resp = Response::new(
         StatusCode(200),
@@ -315,6 +316,7 @@ fn handle_transcode(
 
     let mut headers = common_headers();
     headers.push(ct_header("video/mp4"));
+    headers.push(Header::from_bytes(b"Accept-Ranges", b"none").unwrap());
 
     let resp = Response::new(StatusCode(200), headers, stdout, None, None);
     let _ = request.respond(resp);
@@ -452,6 +454,7 @@ fn handle_subtitle(request: tiny_http::Request, url: &str) {
 
     let mut headers = common_headers();
     headers.push(Header::from_bytes(b"Content-Type", b"text/vtt").unwrap());
+    headers.push(Header::from_bytes(b"Accept-Ranges", b"none").unwrap());
 
     let resp = Response::new(
         StatusCode(200),
