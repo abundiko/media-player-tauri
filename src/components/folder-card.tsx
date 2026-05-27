@@ -56,7 +56,7 @@ export function FolderCard({ folder, scanning, onClick, deletable, onDelete }: F
   return (
     <button
       ref={cardRef}
-      className="flex flex-col gap-3 rounded-xl border border-border bg-surface p-4 text-left shadow-lg transition-colors hover:bg-surface-hover"
+      className="flex flex-col gap-3 rounded-xl border border-border bg-surface-alt p-4 text-left shadow-lg backdrop-blur-xl transition-colors hover:bg-surface-hover"
       onClick={onClick}
     >
       <div className="flex items-center gap-2">

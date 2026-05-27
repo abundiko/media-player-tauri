@@ -90,7 +90,6 @@ const actions: ActionButton[] = [
 export function HomePage() {
   const loadFile = usePlayerStore((s) => s.loadFile);
   const scanFolder = useLocalMediaStore((s) => s.scanFolder);
-  const foldersState = useLocalMediaStore((s) => s.folders);
   const [activeFolder, setActiveFolder] = useState<FolderMedia | null>(null);
   const [webUrlOpen, setWebUrlOpen] = useState(false);
 
@@ -134,7 +133,7 @@ export function HomePage() {
 
   return (
     <div className="h-full w-full overflow-y-auto">
-      <div className="sticky top-0 z-10 flex items-center gap-3 border-b border-border bg-surface px-6 py-3">
+      <div className="sticky top-0 z-10 flex items-center gap-3 border-b border-border bg-surface-alt px-6 py-3 backdrop-blur-xl">
         {actions.map(({ label, icon: Icon }) => (
           <button
             key={label}

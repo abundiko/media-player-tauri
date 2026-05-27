@@ -23,7 +23,7 @@ export function ErrorModal({ isOpen, onOpenChange }: ErrorModalProps) {
     >
       <Modal
         className={({ isEntering, isExiting }) =>
-          `outline-hidden w-full max-w-md rounded-xl border border-border bg-surface p-6 shadow-lg ring-1 ring-ring ${
+          `outline-hidden w-full max-w-md rounded-xl border border-border bg-surface-alt p-6 shadow-lg ring-1 ring-ring backdrop-blur-xl ${
             isEntering ? 'animate-scale-in' : ''
           } ${isExiting ? 'animate-scale-out' : ''}`
         }

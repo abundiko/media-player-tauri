@@ -137,7 +137,7 @@ export function FolderMediaModal({ folder, onClose }: FolderMediaModalProps) {
 
         {/* modal */}
         <motion.div
-          className="relative flex max-h-[90vh] w-full max-w-4xl flex-col rounded-2xl border border-border bg-surface shadow-2xl"
+          className="relative flex max-h-[90vh] w-full max-w-4xl flex-col rounded-2xl border border-border bg-surface-alt shadow-2xl backdrop-blur-xl"
           initial={{ opacity: 0, scale: 0.95, y: 10 }}
           animate={{ opacity: 1, scale: 1, y: 0 }}
           exit={{ opacity: 0, scale: 0.95, y: 10 }}

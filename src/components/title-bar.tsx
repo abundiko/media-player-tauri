@@ -50,7 +50,7 @@ export function TitleBar() {
   return (
     <div
       data-tauri-drag-region
-      className="relative z-60 flex h-9 shrink-0 items-center justify-between border-b border-border bg-surface px-3 select-none"
+      className="relative z-60 flex h-9 shrink-0 items-center justify-between border-b border-border bg-surface-alt px-3 backdrop-blur-xl select-none"
     >
       <div className="flex items-center gap-2">
         <span className="text-xs font-semibold text-text-muted">Caste</span>

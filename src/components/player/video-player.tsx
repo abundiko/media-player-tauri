@@ -235,7 +235,6 @@ export function VideoPlayer() {
     setCurrentTime,
     setDuration,
     enableTranscoding,
-    seekTranscode,
     fetchSubtitleTracks,
     checkSystemFfmpeg,
     isSystemFfmpeg,
@@ -385,7 +384,10 @@ export function VideoPlayer() {
         clearTimeout(reviveTimeoutRef.current);
         reviveTimeoutRef.current = null;
       }
-      video.play().catch(() => setPlaying(false));
+      // Only auto-play if the user hasn't explicitly paused
+      if (!pauseStartRef.current) {
+        video.play().catch(() => setPlaying(false));
+      }
     };
 
     const onStalled = () => console.log("[video] stalled");
@@ -431,7 +433,9 @@ export function VideoPlayer() {
     video.addEventListener("stalled", onStalled);
     video.addEventListener("waiting", onWaiting);
 
-    video.play().catch(() => {});
+    if (!pauseStartRef.current) {
+      video.play().catch(() => {});
+    }
 
     return () => {
       video.removeEventListener("timeupdate", onTimeUpdate);
@@ -1036,7 +1040,7 @@ export function VideoPlayer() {
         }}
       >
         <div className="mx-auto flex max-w-[1600px] items-center gap-2 px-10 py-1.5">
-          <TooltipTrigger>
+          {/*<TooltipTrigger>
             <Button
               onPress={close}
               className="flex cursor-pointer items-center justify-center rounded p-1 text-white/50 transition-colors hover:bg-white/10 hover:text-white"
@@ -1046,7 +1050,7 @@ export function VideoPlayer() {
             <Tooltip className="rounded bg-gray-800 px-2 py-1 text-xs text-white shadow-lg">
               Go back
             </Tooltip>
-          </TooltipTrigger>
+          </TooltipTrigger>*/}
           {currentFolder && (
             <TooltipTrigger>
               <Button
@@ -1128,7 +1132,7 @@ export function VideoPlayer() {
 
       {playbackError && (
         <div className="absolute inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm">
-          <div className="mx-4 flex max-w-md flex-col gap-4 rounded-2xl border border-border bg-surface p-6 shadow-2xl">
+          <div className="mx-4 flex max-w-md flex-col gap-4 rounded-2xl border border-border bg-surface-alt p-6 shadow-2xl backdrop-blur-xl">
             <h3 className="text-base font-semibold text-text">
               Playback Error
             </h3>

@@ -130,7 +130,7 @@ export function WebUrlModal({ onClose }: WebUrlModalProps) {
         />
 
         <motion.div
-          className="relative flex w-full max-w-lg flex-col rounded-2xl border border-border bg-surface shadow-2xl"
+          className="relative flex w-full max-w-lg flex-col rounded-2xl border border-border bg-surface-alt shadow-2xl backdrop-blur-xl"
           initial={{ opacity: 0, scale: 0.95, y: 10 }}
           animate={{ opacity: 1, scale: 1, y: 0 }}
           exit={{ opacity: 0, scale: 0.95, y: 10 }}
