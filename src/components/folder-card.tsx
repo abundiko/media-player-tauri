@@ -64,18 +64,28 @@ export function FolderCard({ folder, scanning, onClick, deletable, onDelete }: F
         <span className="min-w-0 truncate text-sm font-medium text-text">{folder.name}</span>
         {scanning && <LuLoader size={12} className="shrink-0 animate-spin text-text-muted" />}
         {deletable && onDelete && (
-          <button
-            type="button"
+          <div
+            role="button"
+            tabIndex={0}
             onClick={(e) => {
               e.stopPropagation()
               if (window.confirm(`Remove "${folder.name}" from the list?`)) {
                 onDelete()
               }
             }}
-            className="ml-auto flex shrink-0 items-center justify-center rounded p-0.5 text-text-muted transition-colors hover:bg-surface-hover hover:text-text"
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' || e.key === ' ') {
+                e.stopPropagation()
+                e.preventDefault()
+                if (window.confirm(`Remove "${folder.name}" from the list?`)) {
+                  onDelete()
+                }
+              }
+            }}
+            className="ml-auto flex shrink-0 cursor-pointer items-center justify-center rounded p-0.5 text-text-muted transition-colors hover:bg-surface-hover hover:text-text"
           >
             <LuX size={14} />
-          </button>
+          </div>
         )}
       </div>
 

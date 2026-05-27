@@ -62,6 +62,16 @@ function saveExplicitCache(keys: string[]) {
   } catch {}
 }
 
+const MAX_CACHE_ENTRIES = 500;
+
+function evictCache(cache: Record<string, string | null>, max: number): Record<string, string | null> {
+  const keys = Object.keys(cache);
+  if (keys.length <= max) return cache;
+  const toDelete = keys.length - max;
+  const keep = new Set(keys.slice(toDelete));
+  return Object.fromEntries(Object.entries(cache).filter(([k]) => keep.has(k)));
+}
+
 // ── Sequential thumbnail queue ──────────────────────────────────
 // Processes one thumbnail at a time to avoid flooding the backend
 // with concurrent ffmpeg processes.
@@ -180,10 +190,13 @@ export const useLocalMediaStore = create<LocalMediaState>((set, get) => ({
     set((s) => ({ loadingThumbnails: { ...s.loadingThumbnails, [videoPath]: true } }))
 
     enqueueThumb(videoPath).then((url) => {
-      set((s) => ({
-        thumbnailCache: { ...s.thumbnailCache, [videoPath]: url },
-        loadingThumbnails: { ...s.loadingThumbnails, [videoPath]: false },
-      }))
+      set((s) => {
+        const cache = { ...s.thumbnailCache, [videoPath]: url }
+        return {
+          thumbnailCache: evictCache(cache, MAX_CACHE_ENTRIES),
+          loadingThumbnails: { ...s.loadingThumbnails, [videoPath]: false },
+        }
+      })
     })
   },
 

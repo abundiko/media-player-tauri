@@ -1,6 +1,7 @@
 import { useState, useMemo, useCallback, useEffect, useRef } from 'react'
 import { motion, AnimatePresence } from 'motion/react'
-import { LuX, LuVideo, LuMusic, LuArrowUpDown } from 'react-icons/lu'
+import { useVirtualizer } from '@tanstack/react-virtual'
+import { LuX, LuVideo, LuMusic, LuArrowUpDown, LuSearch } from 'react-icons/lu'
 import type { FolderMedia, ScannedVideo, SortKey } from '../stores/local-media'
 import { useLocalMediaStore } from '../stores/local-media'
 import { usePlayerStore } from '../stores/player'
@@ -72,30 +73,34 @@ function sortVideos(videos: ScannedVideo[], sort: SortKey): ScannedVideo[] {
   return arr
 }
 
-const containerVariants = {
-  hidden: { opacity: 0 },
-  visible: {
-    opacity: 1,
-    transition: { staggerChildren: 0.04, delayChildren: 0.1 },
-  },
-} as const
-
-const itemVariants = {
-  hidden: { opacity: 0, y: 16 },
-  visible: {
-    opacity: 1,
-    y: 0,
-    transition: { type: 'spring' as const, stiffness: 260, damping: 24 },
-  },
-}
-
 export function FolderMediaModal({ folder, onClose }: FolderMediaModalProps) {
   const [sort, setSort] = useState<SortKey>('name-asc')
   const [showSort, setShowSort] = useState(false)
+  const [searchQuery, setSearchQuery] = useState('')
+  const searchRef = useRef<HTMLInputElement>(null)
+  const scrollRef = useRef<HTMLDivElement>(null)
   const thumbnailCache = useLocalMediaStore((s) => s.thumbnailCache)
   const loadVideoThumbnail = useLocalMediaStore((s) => s.loadVideoThumbnail)
 
-  const sorted = useMemo(() => sortVideos(folder.videos, sort), [folder.videos, sort])
+  // Auto-focus search on mount
+  useEffect(() => {
+    searchRef.current?.focus()
+  }, [])
+
+  const sorted = useMemo(() => {
+    const filtered = searchQuery
+      ? folder.videos.filter((v) => v.name.toLowerCase().includes(searchQuery.toLowerCase()))
+      : folder.videos
+    return sortVideos(filtered, sort)
+  }, [folder.videos, sort, searchQuery])
+
+  const virtualizer = useVirtualizer({
+    count: sorted.length,
+    getScrollElement: () => scrollRef.current,
+    estimateSize: () => 100,
+    overscan: 10,
+    measureElement: (element) => element?.getBoundingClientRect().height,
+  })
 
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
@@ -139,98 +144,127 @@ export function FolderMediaModal({ folder, onClose }: FolderMediaModalProps) {
           transition={{ type: 'spring', stiffness: 300, damping: 28 }}
         >
           {/* header */}
-          <div className="flex items-center justify-between gap-4 border-b border-border px-5 py-4">
-            <motion.h2
-              className="truncate text-lg font-semibold text-text"
-              layout="position"
-              transition={{ type: 'spring', stiffness: 300, damping: 28 }}
-            >
-              {folder.name}
-            </motion.h2>
-
-            <div className="flex items-center gap-2">
-              {/* sort button */}
-              <div className="relative">
-                <button
-                  className="flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-medium text-text-muted transition-colors hover:bg-surface-hover"
-                  onClick={() => setShowSort((s) => !s)}
-                >
-                  <LuArrowUpDown size={13} />
-                  {sortOptions.find((o) => o.key === sort)?.label}
-                </button>
-
-                {showSort && (
-                  <>
-                    <div
-                      className="fixed inset-0 z-40"
-                      onClick={() => setShowSort(false)}
-                    />
-                    <motion.div
-                      className="absolute right-0 top-full z-50 mt-1 min-w-[140px] overflow-hidden rounded-xl border border-border bg-surface/80 p-1 shadow-xl backdrop-blur-xl"
-                      initial={{ opacity: 0, y: -4, scale: 0.96 }}
-                      animate={{ opacity: 1, y: 0, scale: 1 }}
-                      exit={{ opacity: 0, y: -4, scale: 0.96 }}
-                      transition={{ duration: 0.12 }}
-                    >
-                      {sortOptions.map((opt) => (
-                        <button
-                          key={opt.key}
-                          className={`flex w-full items-center rounded-lg px-3 py-1.5 text-left text-xs transition-colors ${
-                            sort === opt.key
-                              ? 'bg-surface-hover text-text'
-                              : 'text-text-muted hover:bg-surface-hover'
-                          }`}
-                          onClick={() => {
-                            setSort(opt.key)
-                            setShowSort(false)
-                          }}
-                        >
-                          {opt.label}
-                        </button>
-                      ))}
-                    </motion.div>
-                  </>
-                )}
-              </div>
-
-              {/* close */}
-              <button
-                className="flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-sm text-text-muted transition-colors hover:bg-red-500/20 hover:text-red-400"
-                onClick={onClose}
+          <div className="border-b border-border">
+            <div className="flex items-center justify-between gap-4 px-5 py-4">
+              <motion.h2
+                className="truncate text-lg font-semibold text-text"
+                layout="position"
+                transition={{ type: 'spring', stiffness: 300, damping: 28 }}
               >
-                <LuX size={16} />
-              </button>
+                {folder.name}
+              </motion.h2>
+
+              <div className="flex items-center gap-2">
+                {/* sort button */}
+                <div className="relative">
+                  <button
+                    className="flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-medium text-text-muted transition-colors hover:bg-surface-hover"
+                    onClick={() => setShowSort((s) => !s)}
+                  >
+                    <LuArrowUpDown size={13} />
+                    {sortOptions.find((o) => o.key === sort)?.label}
+                  </button>
+
+                  {showSort && (
+                    <>
+                      <div
+                        className="fixed inset-0 z-40"
+                        onClick={() => setShowSort(false)}
+                      />
+                      <motion.div
+                        className="absolute right-0 top-full z-50 mt-1 min-w-[140px] overflow-hidden rounded-xl border border-border bg-surface/80 p-1 shadow-xl backdrop-blur-xl"
+                        initial={{ opacity: 0, y: -4, scale: 0.96 }}
+                        animate={{ opacity: 1, y: 0, scale: 1 }}
+                        exit={{ opacity: 0, y: -4, scale: 0.96 }}
+                        transition={{ duration: 0.12 }}
+                      >
+                        {sortOptions.map((opt) => (
+                          <button
+                            key={opt.key}
+                            className={`flex w-full items-center rounded-lg px-3 py-1.5 text-left text-xs transition-colors ${
+                              sort === opt.key
+                                ? 'bg-surface-hover text-text'
+                                : 'text-text-muted hover:bg-surface-hover'
+                            }`}
+                            onClick={() => {
+                              setSort(opt.key)
+                              setShowSort(false)
+                            }}
+                          >
+                            {opt.label}
+                          </button>
+                        ))}
+                      </motion.div>
+                    </>
+                  )}
+                </div>
+
+                {/* close */}
+                <button
+                  className="flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-sm text-text-muted transition-colors hover:bg-red-500/20 hover:text-red-400"
+                  onClick={onClose}
+                >
+                  <LuX size={16} />
+                </button>
+              </div>
+            </div>
+
+            {/* search */}
+            <div className="px-5 pb-3">
+              <div className="relative">
+                <LuSearch
+                  size={14}
+                  className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-text-muted"
+                />
+                <input
+                  ref={searchRef}
+                  type="text"
+                  placeholder="Filter files…"
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  className="w-full rounded-lg border border-border bg-surface-alt py-2 pl-9 pr-3 text-sm text-text outline-none placeholder:text-text-muted/60 transition-colors focus:border-text-muted"
+                />
+              </div>
             </div>
           </div>
 
           {/* list */}
-          <div className="flex-1 overflow-y-auto p-5">
+          <div ref={scrollRef} className="flex-1 overflow-y-auto p-5">
             {sorted.length === 0 ? (
               <p className="text-center text-sm text-text-muted">No media files found</p>
             ) : (
-              <motion.div
-                className="flex flex-col gap-2"
-                variants={containerVariants}
-                initial="hidden"
-                animate="visible"
-                key={sort}
+              <div
+                className="relative w-full"
+                style={{ height: virtualizer.getTotalSize() }}
               >
-                {sorted.map((video) => (
-                  <MediaTile
-                    key={video.path}
-                    video={video}
-                    thumbnail={thumbnailCache[video.path]}
-                    onLoadThumbnail={() => loadVideoThumbnail(video.path)}
-                    onPlay={() => handlePlay(video.path)}
-                  />
-                ))}
-              </motion.div>
+                {virtualizer.getVirtualItems().map((virtualItem) => {
+                  const video = sorted[virtualItem.index]
+                  return (
+                    <div
+                      key={virtualItem.key}
+                      data-index={virtualItem.index}
+                      ref={virtualizer.measureElement}
+                      className="absolute left-0 top-0 w-full pb-2"
+                      style={{
+                        transform: `translateY(${virtualItem.start}px)`,
+                      }}
+                    >
+                      <MediaTile
+                        video={video}
+                        thumbnail={thumbnailCache[video.path]}
+                        onLoadThumbnail={() => loadVideoThumbnail(video.path)}
+                        onPlay={() => handlePlay(video.path)}
+                      />
+                    </div>
+                  )
+                })}
+              </div>
             )}
           </div>
 
           {/* footer */}
           <div className="border-t border-border px-5 py-3 text-xs text-text-muted">
-            {folder.videos.length} file{folder.videos.length !== 1 ? 's' : ''}
+            {sorted.length} / {folder.videos.length} file{folder.videos.length !== 1 ? 's' : ''}
           </div>
         </motion.div>
       </motion.div>
@@ -274,8 +308,7 @@ function MediaTile({ video, thumbnail, onLoadThumbnail, onPlay }: MediaTileProps
   return (
     <motion.button
       ref={tileRef}
-      className="flex items-center gap-3 rounded-xl border border-border bg-surface p-2.5 text-left transition-colors hover:bg-surface-hover"
-      variants={itemVariants}
+      className="flex w-full items-center gap-3 rounded-xl border border-border bg-surface p-2.5 text-left transition-colors hover:bg-surface-hover"
       onClick={onPlay}
     >
       {/* thumbnail */}

@@ -18,8 +18,10 @@ const COLORS = [
   "rgba(255, 100, 50, 0.5)",
 ];
 
-export function AnimatedBackground() {
+export function AnimatedBackground({ playing = false }: { playing?: boolean }) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
+  const playingRef = useRef(playing);
+  playingRef.current = playing;
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -52,8 +54,10 @@ export function AnimatedBackground() {
       ctx!.clearRect(0, 0, w, h);
 
       for (const b of blobs) {
-        b.x += b.vx * dt;
-        b.y += b.vy * dt;
+        if (!playingRef.current) {
+          b.x += b.vx * dt;
+          b.y += b.vy * dt;
+        }
 
         if (b.x < -b.size) b.x = w + b.size;
         if (b.x > w + b.size) b.x = -b.size;

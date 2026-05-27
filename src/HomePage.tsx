@@ -117,13 +117,14 @@ export function HomePage() {
           const key = selected;
           const name = selected.replace(/\\/g, '/').split('/').pop() || selected;
 
-          if (!foldersState[key]) {
+          const store = useLocalMediaStore.getState();
+          if (!store.folders[key]) {
             await scanFolder(key, selected, name);
           }
 
           markExplicitFolder(key);
 
-          const folder = foldersState[key] || useLocalMediaStore.getState().folders[key];
+          const folder = useLocalMediaStore.getState().folders[key];
           if (folder) setActiveFolder(folder);
         }
         break;

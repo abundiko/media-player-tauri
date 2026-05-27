@@ -26,6 +26,7 @@ export interface PlayerState {
   subtitleTracks: SubtitleTrack[]
   activeSubtitleTrack: number | null
   isSystemFfmpeg: boolean
+  mediaError: string | null
 
   loadFile: (path: string) => Promise<void>
   enableTranscoding: (speed?: number) => Promise<void>
@@ -59,6 +60,7 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
   subtitleTracks: [],
   activeSubtitleTrack: null,
   isSystemFfmpeg: false,
+  mediaError: null,
 
   loadFile: async (path: string) => {
     const isUrl = path.startsWith('http://') || path.startsWith('https://')
@@ -73,7 +75,7 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
 
     const prev = state.blobUrl
     if (prev && prev.startsWith('blob:')) URL.revokeObjectURL(prev)
-    set({ blobUrl: null, streamUrl: null, transcodeUrl: null, needsTranscode: false, timeOffset: 0, subtitleTracks: [], activeSubtitleTrack: null, isWebUrl: false })
+    set({ blobUrl: null, streamUrl: null, transcodeUrl: null, needsTranscode: false, timeOffset: 0, subtitleTracks: [], activeSubtitleTrack: null, isWebUrl: false, mediaError: null })
 
     if (isUrl) {
       console.log('[loadFile] web URL detected:', path)
@@ -94,7 +96,7 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
       set({ filePath: path, fileName, streamUrl, playing: true, currentTime: 0, duration: 0 })
     } catch (e) {
       console.error('[loadFile] get_stream_url failed, cannot load file:', e)
-      set({ filePath: null, fileName: null, streamUrl: null, blobUrl: null, playing: false })
+      set({ filePath: null, fileName: null, streamUrl: null, blobUrl: null, playing: false, mediaError: 'This file could not be found. It may have been moved or deleted.' })
     }
   },
 
@@ -127,6 +129,7 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
       console.log('[player] transcoding enabled, new src set')
     } catch (e) {
       console.error('[player] enableTranscoding failed:', e)
+      set({ mediaError: 'This file could not be found. It may have been moved or deleted.' })
     }
   },
 
@@ -139,6 +142,7 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
       set({ transcodeUrl, timeOffset: time, currentTime: time })
     } catch (e) {
       console.error('[player] seekTranscode failed:', e)
+      set({ mediaError: 'This file could not be found. It may have been moved or deleted.' })
     }
   },
 
@@ -183,7 +187,7 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
     set({
       filePath: null, fileName: null, streamUrl: null, blobUrl: null,
       transcodeUrl: null, needsTranscode: false, timeOffset: 0, isWebUrl: false, playing: false,
-      subtitleTracks: [], activeSubtitleTrack: null,
+      subtitleTracks: [], activeSubtitleTrack: null, mediaError: null,
     })
   },
 }))

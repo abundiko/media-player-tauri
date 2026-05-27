@@ -1,18 +1,20 @@
 import { useEffect, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { getCurrentWindow } from "@tauri-apps/api/window";
-import { LuMinimize, LuMaximize, LuMinimize2, LuX, LuChevronLeft } from "react-icons/lu";
+import { LuMinimize, LuMaximize, LuMinimize2, LuX, LuChevronLeft, LuPin } from "react-icons/lu";
 import { useTheme } from "../hooks/use-theme";
 import { LuSun, LuMoon } from "react-icons/lu";
 import { usePlayerStore } from "../stores/player";
 
 export function TitleBar() {
   const [maximized, setMaximized] = useState(false);
+  const [pinned, setPinned] = useState(false);
   const appWindow = getCurrentWindow();
   const { theme, toggle } = useTheme();
   const location = useLocation();
   const navigate = useNavigate();
   const showBack = location.pathname !== "/";
+  const showPin = location.pathname.startsWith("/player/");
 
   useEffect(() => {
     appWindow.isMaximized().then(setMaximized);
@@ -36,6 +38,14 @@ export function TitleBar() {
       unlistenPromise.then((u) => u?.());
     };
   }, [appWindow]);
+
+  // Unpin when navigating away from the player page
+  useEffect(() => {
+    if (!location.pathname.startsWith("/player/")) {
+      appWindow.setAlwaysOnTop(false);
+      setPinned(false);
+    }
+  }, [location.pathname, appWindow]);
 
   return (
     <div
@@ -68,6 +78,32 @@ export function TitleBar() {
         >
           {theme === "dark" ? <LuSun size={12} /> : <LuMoon size={12} />}
         </button>
+
+        {showPin && (
+          <button
+            type="button"
+            onClick={() => {
+              const next = !pinned;
+              appWindow.setAlwaysOnTop(next);
+              setPinned(next);
+            }}
+            aria-label={pinned ? "Unpin window" : "Keep window on top"}
+            className={`flex h-6 w-6 items-center justify-center rounded transition-colors ${
+              pinned
+                ? "bg-primary/20 text-primary hover:bg-primary/30"
+                : "text-text-muted hover:bg-surface-hover hover:text-text"
+            }`}
+          >
+            {pinned ? (
+              <svg viewBox="0 0 24 24" width={12} height={12} fill="currentColor">
+                <path d="M16 2H8a1 1 0 0 0-1 1v4L4.2 11.1c-.4.6 0 1.4.8 1.4h14c.8 0 1.2-.8.8-1.4L17 7V3a1 1 0 0 0-1-1z" />
+                <rect x="10" y="14" width="4" height="7" rx="1" />
+              </svg>
+            ) : (
+              <LuPin size={12} />
+            )}
+          </button>
+        )}
 
         <div className="mx-1 h-4 w-px bg-border" />
 

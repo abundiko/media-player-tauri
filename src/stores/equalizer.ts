@@ -57,6 +57,13 @@ function save(data: StoredData) {
   } catch {}
 }
 
+let saveTimeout: ReturnType<typeof setTimeout> | null = null
+
+function debouncedSave(data: StoredData) {
+  if (saveTimeout) clearTimeout(saveTimeout)
+  saveTimeout = setTimeout(() => save(data), 150)
+}
+
 interface EqualizerState {
   video: VideoFilters
   audio: number[]
@@ -81,7 +88,7 @@ export const useEqualizerStore = create<EqualizerState>((set, get) => ({
     set((s) => {
       const video = { ...s.video, [key]: value }
       const next = { ...s, video, videoPreset: 'custom' as string }
-      save(next)
+      debouncedSave(next)
       return next
     })
   },
@@ -100,7 +107,7 @@ export const useEqualizerStore = create<EqualizerState>((set, get) => ({
       const audio = [...s.audio]
       audio[index] = gain
       const next = { ...s, audio, audioPreset: 'custom' as string }
-      save(next)
+      debouncedSave(next)
       return next
     })
   },

@@ -2,6 +2,7 @@ import { useRef, useEffect, useCallback, useState, useMemo } from "react";
 import { usePlayerStore } from "../../stores/player";
 import { invoke } from "@tauri-apps/api/core";
 import { open } from "@tauri-apps/plugin-dialog";
+import { getCurrentWindow } from "@tauri-apps/api/window";
 import { Button, Tooltip, TooltipTrigger } from "react-aria-components";
 import {
   LuHouse,
@@ -234,13 +235,17 @@ export function VideoPlayer() {
     setCurrentTime,
     setDuration,
     enableTranscoding,
+    seekTranscode,
     fetchSubtitleTracks,
     checkSystemFfmpeg,
     isSystemFfmpeg,
+    mediaError,
   } = usePlayerStore();
 
   const currentTimeRef = useRef(currentTime);
   currentTimeRef.current = currentTime;
+  const reviveTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const pauseStartRef = useRef<number | null>(null);
 
   useEffect(() => {
     checkSystemFfmpeg();
@@ -309,8 +314,14 @@ export function VideoPlayer() {
       const p = usePlayerStore.getState().filePath;
       if (p) clearResumePosition(p);
     };
-    const onPlay = () => setPlaying(true);
-    const onPause = () => setPlaying(false);
+    const onPlay = () => {
+      pauseStartRef.current = null;
+      setPlaying(true);
+    };
+    const onPause = () => {
+      pauseStartRef.current = Date.now();
+      setPlaying(false);
+    };
 
     const onError = () => {
       const ve = video.error;
@@ -335,7 +346,11 @@ export function VideoPlayer() {
 
       if (streamUrl && !blobUrl && !transcodeUrl && !triedTranscode.current) {
         fallbackToTranscode();
+        return;
       }
+
+      // All retries exhausted — the file was likely moved or deleted
+      setPlaybackError("This file could not be found. It may have been moved or deleted.");
     };
 
     const onLoadStart = () => console.log("[video] loadstart");
@@ -366,11 +381,43 @@ export function VideoPlayer() {
 
     const onCanPlay = () => {
       console.log("[video] canplay");
+      if (reviveTimeoutRef.current) {
+        clearTimeout(reviveTimeoutRef.current);
+        reviveTimeoutRef.current = null;
+      }
       video.play().catch(() => setPlaying(false));
     };
 
     const onStalled = () => console.log("[video] stalled");
-    const onWaiting = () => console.log("[video] waiting");
+    const onWaiting = () => {
+      console.log("[video] waiting");
+      if (!needsTranscode) return;
+      // If the network dropped (NETWORK_IDLE = 1) while waiting, the server
+      // likely killed the idle TCP connection during a long pause.
+      // Start a 1.5s grace period; if the stream doesn't recover, revive it.
+      if (video.networkState === HTMLMediaElement.NETWORK_IDLE) {
+        console.log("[video] waiting with idle network — scheduling revive");
+        if (reviveTimeoutRef.current) clearTimeout(reviveTimeoutRef.current);
+        reviveTimeoutRef.current = setTimeout(() => {
+          if (!reviveTimeoutRef.current) return;
+          reviveTimeoutRef.current = null;
+          const s = usePlayerStore.getState();
+          const v = videoRef.current;
+          if (!v || !s.needsTranscode) return;
+          console.log("[video] auto-reviving transcoded stream");
+          v.currentTime = v.currentTime; // flush any pending decode
+          s.seekTranscode(
+            s.timeOffset + v.currentTime * speedRef.current,
+            speedRef.current,
+          );
+        }, 1500);
+      } else {
+        if (reviveTimeoutRef.current) {
+          clearTimeout(reviveTimeoutRef.current);
+          reviveTimeoutRef.current = null;
+        }
+      }
+    };
 
     video.addEventListener("timeupdate", onTimeUpdate);
     video.addEventListener("durationchange", onDurationChange);
@@ -398,6 +445,10 @@ export function VideoPlayer() {
       video.removeEventListener("canplay", onCanPlay);
       video.removeEventListener("stalled", onStalled);
       video.removeEventListener("waiting", onWaiting);
+      if (reviveTimeoutRef.current) {
+        clearTimeout(reviveTimeoutRef.current);
+        reviveTimeoutRef.current = null;
+      }
       // Force the browser to close the TCP connection to the media server.
       // Just removeAttribute('src') leaves the socket open in Chrome/WebKit,
       // which prevents the Rust backend from detecting a disconnect — the
@@ -438,10 +489,12 @@ export function VideoPlayer() {
   const gainNodeRef = useRef<GainNode | null>(null);
   const eqNodesRef = useRef<BiquadFilterNode[]>([]);
   const audioCtxStarted = useRef(false);
+  const mountedRef = useRef(false);
 
   useEffect(() => {
     const video = videoRef.current;
     if (!video || audioCtxRef.current || isWebUrl) return;
+    mountedRef.current = true;
 
     try {
       const AudioContext =
@@ -480,16 +533,23 @@ export function VideoPlayer() {
     }
 
     return () => {
-      // Close the AudioContext to free the hardware resource.
-      // Browsers have a strict limit on concurrent AudioContexts (typically 6).
-      // Without this, opening and closing videos will eventually exhaust them.
-      if (audioCtxRef.current) {
-        audioCtxRef.current.close().catch(() => {});
-        audioCtxRef.current = null;
-      }
-      gainNodeRef.current = null;
-      eqNodesRef.current = [];
-      audioCtxStarted.current = false;
+      // Defer AudioContext close — createMediaElementSource permanently binds
+      // the video element to this AudioContext.  In React 19 StrictMode the
+      // component is unmounted and remounted once in development; if we close
+      // synchronously the video goes silent and the remount cannot re-bind.
+      // By deferring with setTimeout(0), the real mount sets mountedRef=true
+      // before the close runs, keeping the AudioContext alive across the
+      // StrictMode double-mount cycle.
+      mountedRef.current = false;
+      setTimeout(() => {
+        if (!mountedRef.current && audioCtxRef.current) {
+          audioCtxRef.current.close().catch(() => {});
+          audioCtxRef.current = null;
+          gainNodeRef.current = null;
+          eqNodesRef.current = [];
+          audioCtxStarted.current = false;
+        }
+      }, 0);
     };
   }, [isWebUrl]);
 
@@ -533,14 +593,10 @@ export function VideoPlayer() {
   useEffect(() => {
     const video = videoRef.current;
     if (!video) return;
-    if (video.readyState >= 2) {
-      if (playing) {
-        video.play().catch(() => {});
-        audioCtxRef.current?.resume();
-      } else {
-        video.pause();
-        audioCtxRef.current?.suspend();
-      }
+    if (playing) {
+      video.play().catch(() => {});
+    } else {
+      video.pause();
     }
   }, [playing]);
 
@@ -768,6 +824,45 @@ export function VideoPlayer() {
       ? new URL(streamUrl || transcodeUrl!).origin
       : null;
 
+  // Send periodic keepalives to prevent the server from killing the transcode
+  // stream while the user is on the player screen (even if paused).
+  useEffect(() => {
+    const baseUrl = subtitleBaseUrl;
+    if (!baseUrl || !filePath) return;
+    const encoded = encodeURIComponent(filePath);
+    const interval = setInterval(() => {
+      fetch(`${baseUrl}/keepalive?path=${encoded}`).catch(() => {});
+    }, 15000);
+    return () => clearInterval(interval);
+  }, [filePath, subtitleBaseUrl]);
+
+  // On window focus, if the video has been paused > 60 seconds,
+  // auto-reconnect the transcoded stream (the TCP connection may have died).
+  useEffect(() => {
+    const appWindow = getCurrentWindow();
+    let unlisten: (() => void) | undefined;
+
+    appWindow
+      .onFocusChanged(({ payload: focused }) => {
+        if (!focused) return;
+        if (!pauseStartRef.current) return;
+        const pausedMs = Date.now() - pauseStartRef.current;
+        if (pausedMs < 60000) return;
+
+        const state = usePlayerStore.getState();
+        if (!state.needsTranscode || !state.filePath) return;
+        console.log("[video] window focused, auto-reconnecting after long pause");
+        state.seekTranscode(state.currentTime, speedRef.current);
+      })
+      .then((fn) => {
+        unlisten = fn;
+      });
+
+    return () => {
+      unlisten?.();
+    };
+  }, []);
+
   // Fetch full WebVTT once when active track changes (not on every seek)
   useEffect(() => {
     if (activeSubtitleTrack === null || !subtitleBaseUrl || !filePath) {
@@ -807,6 +902,15 @@ export function VideoPlayer() {
     return () => clearTimeout(timer);
   }, [resumePos]);
 
+  // Sync store-level media errors into local playbackError for modal display
+  const prevMediaErrorRef = useRef(mediaError);
+  useEffect(() => {
+    if (mediaError && mediaError !== prevMediaErrorRef.current) {
+      setPlaybackError(mediaError);
+    }
+    prevMediaErrorRef.current = mediaError;
+  }, [mediaError]);
+
   function fmtTime(s: number): string {
     const h = Math.floor(s / 3600);
     const m = Math.floor((s % 3600) / 60);
@@ -827,7 +931,7 @@ export function VideoPlayer() {
         onSkipForward={skipForward}
         onShowIndicator={showIndicator}
       />
-      <AnimatedBackground />
+      <AnimatedBackground playing={playing} />
 
       <video
         ref={videoRef}
@@ -1034,7 +1138,10 @@ export function VideoPlayer() {
             <div className="flex justify-end gap-3">
               <button
                 type="button"
-                onClick={() => setPlaybackError(null)}
+                onClick={() => {
+                  setPlaybackError(null);
+                  usePlayerStore.setState({ mediaError: null });
+                }}
                 className="rounded-lg bg-surface-alt px-4 py-2 text-sm font-medium text-text transition-colors hover:opacity-90"
               >
                 Dismiss

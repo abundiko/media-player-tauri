@@ -12,6 +12,7 @@
   "app": {
     "windows": [
       {
+        "label": "main",
         "title": "Caste",
         "width": 1024,
         "height": 720,
@@ -24,7 +25,7 @@
       }
     ],
     "security": {
-      "csp": null
+      "csp": "default-src 'self'; media-src 'self' http://127.0.0.1:*; img-src 'self' http://127.0.0.1:* data:; style-src 'self' 'unsafe-inline'; script-src 'self'; font-src 'self' data:"
     }
   },
   "bundle": {
@@ -52,7 +53,7 @@
       {
         "name": "Media File",
         "description": "Caste Video and Audio File",
-        "mimeType": "video/mp4;video/x-matroska;video/x-msvideo;video/quicktime;video/x-ms-wmv;video/x-flv;video/webm;video/mpeg;audio/mpeg;audio/flac;audio/wav;audio/aac;audio/ogg;audio/x-ms-wma;audio/ac3;audio/vnd.dts;",
+        "mimeType": "video/mp4",
         "ext": [
           "mp4", "mkv", "avi", "mov", "wmv", "flv", "webm", "m4v", "mpg", "mpeg",
           "mp3", "flac", "wav", "aac", "ogg", "opus", "m4a", "wma", "ac3", "dts"
