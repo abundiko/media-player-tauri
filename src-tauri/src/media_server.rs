@@ -1,7 +1,10 @@
 use std::collections::HashMap;
 use std::fs::File;
 use std::io::{Read, Seek, SeekFrom};
-use std::os::unix::io::{FromRawFd, IntoRawFd, OwnedFd};
+#[cfg(unix)]
+use std::os::unix::io::{FromRawFd, IntoRawFd, OwnedFd as PlatformHandle};
+#[cfg(windows)]
+use std::os::windows::io::{FromRawHandle, IntoRawHandle, OwnedHandle as PlatformHandle};
 use std::path::Path;
 use std::process::{Child, Command, Stdio};
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
@@ -57,6 +60,17 @@ fn common_headers() -> Vec<Header> {
         Header::from_bytes(b"Access-Control-Expose-Headers", b"Content-Range, Content-Length, Accept-Ranges").unwrap(),
         Header::from_bytes(b"Cache-Control", b"no-cache").unwrap(),
     ]
+}
+
+fn stdout_to_handle(stdout: std::process::ChildStdout) -> PlatformHandle {
+    #[cfg(unix)]
+    {
+        unsafe { PlatformHandle::from_raw_fd(stdout.into_raw_fd()) }
+    }
+    #[cfg(windows)]
+    {
+        unsafe { PlatformHandle::from_raw_handle(stdout.into_raw_handle()) }
+    }
 }
 
 fn kill_child(mut child: Child) {
@@ -268,11 +282,18 @@ fn handle_keepalive(
         }
     }
     if path.is_empty() || !Path::new(&path).exists() || !is_safe_path(&path) {
-        let _ = request.respond(Response::from_string("Not Found").with_status_code(404));
+        let mut resp = Response::from_string("Not Found").with_status_code(404);
+        for h in common_headers() {
+            resp.add_header(h);
+        }
+        let _ = request.respond(resp);
         return;
     }
     keepalive_tracker.lock().unwrap().insert(path, Instant::now());
-    let resp = Response::from_string("OK").with_status_code(200);
+    let mut resp = Response::from_string("OK").with_status_code(200);
+    for h in common_headers() {
+        resp.add_header(h);
+    }
     let _ = request.respond(resp);
 }
 
@@ -395,8 +416,7 @@ fn handle_transcode(
     // reconnect when the user resumes.  The drain thread keeps reading the dup'd
     // end, preventing SIGPIPE and keeping ffmpeg alive for a grace period.
     let drain_fd = {
-        let fd = stdout.into_raw_fd();
-        let owned = unsafe { OwnedFd::from_raw_fd(fd) };
+        let owned = stdout_to_handle(stdout);
         match owned.try_clone() {
             Ok(clone) => {
                 let resp_body = File::from(clone);
