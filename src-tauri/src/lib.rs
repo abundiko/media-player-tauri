@@ -554,6 +554,14 @@ fn get_startup_file() -> Result<Option<String>, String> {
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    #[cfg(target_os = "linux")]
+    {
+        // WebKitGTK 2.42+ introduced a DMABUF renderer that causes severe video 
+        // flickering and tearing on many Linux systems (especially NVIDIA) when 
+        // the window is transparent. Disabling it forces the stable rendering path.
+        std::env::set_var("WEBKIT_DISABLE_DMABUF_RENDERER", "1");
+    }
+
     let server = media_server::MediaServer::start().expect("Failed to start media server");
     let cache_dir = ensure_cache_dir();
 
