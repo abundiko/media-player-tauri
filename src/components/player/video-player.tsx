@@ -5,7 +5,6 @@ import { open } from "@tauri-apps/plugin-dialog";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { Button, Tooltip, TooltipTrigger } from "react-aria-components";
 import {
-  LuHouse,
   LuFolderOpen,
   LuPlay,
   LuPause,
@@ -25,7 +24,11 @@ import type { FolderMedia } from "../../stores/local-media";
 import { AnimatedBackground } from "./animated-background";
 import { EqualizerPopover } from "./equalizer-popover";
 import { useEqualizerStore } from "../../stores/equalizer";
-import { getResumePosition, setResumePosition, clearResumePosition } from "../../stores/resume";
+import {
+  getResumePosition,
+  setResumePosition,
+  clearResumePosition,
+} from "../../stores/resume";
 
 const EXT_SUBTITLE_ID = -1;
 
@@ -349,7 +352,9 @@ export function VideoPlayer() {
       }
 
       // All retries exhausted — the file was likely moved or deleted
-      setPlaybackError("This file could not be found. It may have been moved or deleted.");
+      setPlaybackError(
+        "This file could not be found. It may have been moved or deleted.",
+      );
     };
 
     const onLoadStart = () => console.log("[video] loadstart");
@@ -530,10 +535,7 @@ export function VideoPlayer() {
       gainNodeRef.current.connect(audioCtxRef.current.destination);
       audioCtxStarted.current = true;
     } catch (e) {
-      console.error(
-        "Failed to initialize Web Audio API for amplification:",
-        e,
-      );
+      console.error("Failed to initialize Web Audio API for amplification:", e);
     }
 
     return () => {
@@ -855,7 +857,9 @@ export function VideoPlayer() {
 
         const state = usePlayerStore.getState();
         if (!state.needsTranscode || !state.filePath) return;
-        console.log("[video] window focused, auto-reconnecting after long pause");
+        console.log(
+          "[video] window focused, auto-reconnecting after long pause",
+        );
         state.seekTranscode(state.currentTime, speedRef.current);
       })
       .then((fn) => {
@@ -919,7 +923,8 @@ export function VideoPlayer() {
     const h = Math.floor(s / 3600);
     const m = Math.floor((s % 3600) / 60);
     const sec = Math.floor(s % 60);
-    if (h > 0) return `${h}:${String(m).padStart(2, "0")}:${String(sec).padStart(2, "0")}`;
+    if (h > 0)
+      return `${h}:${String(m).padStart(2, "0")}:${String(sec).padStart(2, "0")}`;
     return `${m}:${String(sec).padStart(2, "0")}`;
   }
 
@@ -982,7 +987,8 @@ export function VideoPlayer() {
       {resumePos && (
         <div className="absolute right-4 top-20 z-30 flex items-center gap-3 rounded-lg bg-black/80 px-3 py-2.5 backdrop-blur-sm shadow-lg animate-fade-in">
           <span className="text-xs text-white/80">
-            Continuing from <span className="font-medium text-white">{fmtTime(resumePos)}</span>
+            Continuing from{" "}
+            <span className="font-medium text-white">{fmtTime(resumePos)}</span>
           </span>
           <button
             type="button"
@@ -1001,7 +1007,14 @@ export function VideoPlayer() {
             onClick={() => setResumePos(null)}
             className="flex items-center justify-center rounded p-0.5 text-white/40 transition-colors hover:bg-white/10 hover:text-white"
           >
-            <svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.5">
+            <svg
+              width="12"
+              height="12"
+              viewBox="0 0 12 12"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="1.5"
+            >
               <path d="M2 2l8 8M10 2l-8 8" />
             </svg>
           </button>

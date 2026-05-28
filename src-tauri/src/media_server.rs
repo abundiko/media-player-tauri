@@ -470,7 +470,7 @@ pub struct MediaServer {
     pub port: u16,
     running: Arc<AtomicBool>,
     transcode_children: Arc<Mutex<HashMap<String, (u32, Child)>>>,
-    keepalive_tracker: Arc<Mutex<HashMap<String, Instant>>>,
+    // keepalive_tracker: Arc<Mutex<HashMap<String, Instant>>>,
 }
 
 impl MediaServer {
@@ -522,7 +522,7 @@ impl MediaServer {
             }
         });
 
-        Ok(MediaServer { port, running, transcode_children, keepalive_tracker })
+        Ok(MediaServer { port, running, transcode_children })
     }
 }
 
