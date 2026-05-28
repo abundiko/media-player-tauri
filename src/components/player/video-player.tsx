@@ -1004,6 +1004,7 @@ export function VideoPlayer() {
         onDoubleClick={toggleFullscreen}
         playsInline
         preload="auto"
+        crossOrigin={isWebUrl ? undefined : "anonymous"}
       />
 
       {indicator && (
