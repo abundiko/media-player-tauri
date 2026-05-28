@@ -50,6 +50,16 @@ pub fn get_ffprobe_path() -> String {
     "ffprobe".to_string()
 }
 
+pub(crate) fn create_command<S: AsRef<std::ffi::OsStr>>(program: S) -> std::process::Command {
+    let mut cmd = std::process::Command::new(program);
+    #[cfg(target_os = "windows")]
+    {
+        use std::os::windows::process::CommandExt;
+        cmd.creation_flags(0x08000000);
+    }
+    cmd
+}
+
 #[tauri::command]
 fn is_using_system_ffmpeg() -> bool {
     get_ffmpeg_path() == "ffmpeg"
@@ -88,7 +98,7 @@ fn get_transcode_url(path: String, seek_time: f64, speed: f64, port: State<Serve
 #[tauri::command]
 async fn probe_duration(path: String) -> Result<f64, String> {
     tauri::async_runtime::spawn_blocking(move || {
-        let child = std::process::Command::new(get_ffprobe_path())
+        let child = create_command(get_ffprobe_path())
             .args([
                 "-v",
                 "error",
@@ -144,7 +154,7 @@ struct FfprobeStream {
 #[tauri::command]
 async fn get_subtitle_tracks(path: String) -> Result<Vec<SubtitleTrack>, String> {
     tauri::async_runtime::spawn_blocking(move || {
-        let output = std::process::Command::new(get_ffprobe_path())
+        let output = create_command(get_ffprobe_path())
             .args([
                 "-v",
                 "error",

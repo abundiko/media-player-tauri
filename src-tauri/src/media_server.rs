@@ -425,7 +425,7 @@ fn handle_transcode_stream(
         "pipe:1".into(),
     ]);
 
-    let mut child = match Command::new(crate::get_ffmpeg_path())
+    let mut child = match crate::create_command(crate::get_ffmpeg_path())
         .args(&args)
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
@@ -652,7 +652,7 @@ fn handle_subtitle(request: tiny_http::Request, url: &str) {
         }
     };
 
-    let mut cmd = Command::new(crate::get_ffmpeg_path());
+    let mut cmd = crate::create_command(crate::get_ffmpeg_path());
     cmd.args([
         "-hide_banner",
         "-loglevel",
