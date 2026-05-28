@@ -290,6 +290,7 @@ export function VideoPlayer() {
     if (!video || !src) return;
 
     triedTranscode.current = false;
+    pauseStartRef.current = null; // Reset stale pause state for new source
     setPlaybackError(null);
     console.log("[video] setting src to:", src);
     video.src = src;
@@ -384,20 +385,32 @@ export function VideoPlayer() {
     };
 
     const onCanPlay = () => {
-      console.log("[video] canplay");
+      console.log("[video] canplay, paused:", video.paused, "readyState:", video.readyState, "networkState:", video.networkState);
       if (reviveTimeoutRef.current) {
         clearTimeout(reviveTimeoutRef.current);
         reviveTimeoutRef.current = null;
       }
+      // Ensure AudioContext is running before attempting playback —
+      // on Windows WebView2 a suspended context blocks the video entirely.
+      if (audioCtxRef.current && audioCtxRef.current.state === 'suspended') {
+        audioCtxRef.current.resume().catch(() => {});
+      }
       // Only auto-play if the user hasn't explicitly paused
       if (!pauseStartRef.current) {
-        video.play().catch(() => setPlaying(false));
+        video.play().then(() => {
+          console.log("[video] play() succeeded in canplay");
+        }).catch((e) => {
+          console.warn("[video] play() rejected in canplay:", e?.name, e?.message);
+          setPlaying(false);
+        });
+      } else {
+        console.log("[video] skipping auto-play, pauseStartRef is set");
       }
     };
 
     const onStalled = () => console.log("[video] stalled");
     const onWaiting = () => {
-      console.log("[video] waiting");
+      console.log("[video] waiting, readyState:", video.readyState, "networkState:", video.networkState);
       if (!needsTranscode) return;
       // If the network dropped (NETWORK_IDLE = 1) while waiting, the server
       // likely killed the idle TCP connection during a long pause.
@@ -438,9 +451,12 @@ export function VideoPlayer() {
     video.addEventListener("stalled", onStalled);
     video.addEventListener("waiting", onWaiting);
 
-    if (!pauseStartRef.current) {
-      video.play().catch(() => {});
-    }
+    console.log("[video] initial play attempt, pauseStartRef:", pauseStartRef.current);
+    video.play().then(() => {
+      console.log("[video] initial play() succeeded");
+    }).catch((e) => {
+      console.warn("[video] initial play() rejected:", e?.name, e?.message);
+    });
 
     return () => {
       video.removeEventListener("timeupdate", onTimeUpdate);
@@ -500,15 +516,22 @@ export function VideoPlayer() {
   const audioCtxStarted = useRef(false);
   const mountedRef = useRef(false);
 
-  useEffect(() => {
+  // Initialize the Web Audio API lazily — defer createMediaElementSource
+  // until after the first 'playing' event. On Windows WebView2, connecting
+  // the audio graph before the video starts playing can permanently block
+  // playback (the video element stalls because audio output is routed to a
+  // suspended or non-functional AudioContext).
+  const audioSetupDone = useRef(false);
+
+  const initWebAudio = useCallback(() => {
     const video = videoRef.current;
-    if (!video || audioCtxRef.current || isWebUrl) return;
-    mountedRef.current = true;
+    if (!video || audioCtxRef.current || isWebUrl || audioSetupDone.current) return;
+    audioSetupDone.current = true;
 
     try {
-      const AudioContext =
+      const AudioContextCtor =
         window.AudioContext || (window as any).webkitAudioContext;
-      audioCtxRef.current = new AudioContext();
+      audioCtxRef.current = new AudioContextCtor();
       gainNodeRef.current = audioCtxRef.current.createGain();
 
       const source = audioCtxRef.current.createMediaElementSource(video);
@@ -525,7 +548,6 @@ export function VideoPlayer() {
       });
       eqNodesRef.current = filters;
 
-      // Chain: source → filter1 → ... → filter10 → gainNode → destination
       let prev: AudioNode = source;
       for (const filter of filters) {
         prev.connect(filter);
@@ -534,18 +556,41 @@ export function VideoPlayer() {
       prev.connect(gainNodeRef.current);
       gainNodeRef.current.connect(audioCtxRef.current.destination);
       audioCtxStarted.current = true;
+
+      if (audioCtxRef.current.state === 'suspended') {
+        audioCtxRef.current.resume().catch(() => {});
+      }
+
+      // Apply current volume
+      const vol = usePlayerStore.getState().volume;
+      video.volume = 1;
+      gainNodeRef.current.gain.value = vol;
+
+      console.log("[audio] Web Audio API initialized, state:", audioCtxRef.current.state);
     } catch (e) {
-      console.error("Failed to initialize Web Audio API for amplification:", e);
+      console.error("Failed to initialize Web Audio API:", e);
     }
+  }, [isWebUrl]);
+
+  useEffect(() => {
+    mountedRef.current = true;
+
+    // Resume AudioContext on any user gesture
+    const resumeOnGesture = () => {
+      if (audioCtxRef.current && audioCtxRef.current.state === 'suspended') {
+        audioCtxRef.current.resume().catch(() => {});
+      }
+    };
+    document.addEventListener('click', resumeOnGesture);
+    document.addEventListener('keydown', resumeOnGesture);
 
     return () => {
+      document.removeEventListener('click', resumeOnGesture);
+      document.removeEventListener('keydown', resumeOnGesture);
       // Defer AudioContext close — createMediaElementSource permanently binds
       // the video element to this AudioContext.  In React 19 StrictMode the
       // component is unmounted and remounted once in development; if we close
       // synchronously the video goes silent and the remount cannot re-bind.
-      // By deferring with setTimeout(0), the real mount sets mountedRef=true
-      // before the close runs, keeping the AudioContext alive across the
-      // StrictMode double-mount cycle.
       mountedRef.current = false;
       setTimeout(() => {
         if (!mountedRef.current && audioCtxRef.current) {
@@ -554,6 +599,7 @@ export function VideoPlayer() {
           gainNodeRef.current = null;
           eqNodesRef.current = [];
           audioCtxStarted.current = false;
+          audioSetupDone.current = false;
         }
       }, 0);
     };
@@ -600,11 +646,20 @@ export function VideoPlayer() {
     const video = videoRef.current;
     if (!video) return;
     if (playing) {
-      video.play().catch(() => {});
+      if (audioCtxRef.current && audioCtxRef.current.state === 'suspended') {
+        audioCtxRef.current.resume().catch(() => {});
+      }
+      video.play().then(() => {
+        console.log("[video] play() succeeded from playing effect");
+        // Initialize Web Audio on first successful play
+        if (!audioSetupDone.current) initWebAudio();
+      }).catch((e) => {
+        console.warn("[video] play() rejected from playing effect:", e?.name, e?.message);
+      });
     } else {
       video.pause();
     }
-  }, [playing]);
+  }, [playing, initWebAudio]);
 
   // ── Resume playback ────────────────────────────────────────────
 
@@ -949,7 +1004,6 @@ export function VideoPlayer() {
         onDoubleClick={toggleFullscreen}
         playsInline
         preload="auto"
-        crossOrigin={isWebUrl ? undefined : "anonymous"}
       />
 
       {indicator && (
