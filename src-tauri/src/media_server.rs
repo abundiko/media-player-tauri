@@ -22,8 +22,6 @@ const MAX_SPEED: f64 = 16.0;
 /// How long to keep an idle transcode process alive without a keepalive signal.
 const KEEPALIVE_TIMEOUT: Duration = Duration::from_secs(30);
 
-
-
 fn mime_type(path: &str) -> &str {
     let ext = path.rsplit('.').next().unwrap_or("").to_lowercase();
     match ext.as_str() {
@@ -57,7 +55,11 @@ fn common_headers() -> Vec<Header> {
         Header::from_bytes(b"Access-Control-Allow-Origin", b"*").unwrap(),
         Header::from_bytes(b"Access-Control-Allow-Methods", b"GET, HEAD, OPTIONS").unwrap(),
         Header::from_bytes(b"Access-Control-Allow-Headers", b"Range").unwrap(),
-        Header::from_bytes(b"Access-Control-Expose-Headers", b"Content-Range, Content-Length, Accept-Ranges").unwrap(),
+        Header::from_bytes(
+            b"Access-Control-Expose-Headers",
+            b"Content-Range, Content-Length, Accept-Ranges",
+        )
+        .unwrap(),
         Header::from_bytes(b"Cache-Control", b"no-cache").unwrap(),
     ]
 }
@@ -176,7 +178,13 @@ fn handle_request(
             let start: u64 = parts[0].parse().unwrap_or(0);
             let end = parts
                 .get(1)
-                .and_then(|s| if s.is_empty() { None } else { s.parse::<u64>().ok() })
+                .and_then(|s| {
+                    if s.is_empty() {
+                        None
+                    } else {
+                        s.parse::<u64>().ok()
+                    }
+                })
                 // Open-ended range: serve from `start` to end-of-file.
                 // The browser manages its own buffering and will close the
                 // connection when it has enough data. This is critical for
@@ -205,9 +213,7 @@ fn handle_request(
             let mut headers = common_headers();
             headers.push(ct);
             headers.push(Header::from_bytes(b"Accept-Ranges", b"bytes").unwrap());
-            headers.push(
-                Header::from_bytes(b"Content-Range", cr_value.as_bytes()).unwrap(),
-            );
+            headers.push(Header::from_bytes(b"Content-Range", cr_value.as_bytes()).unwrap());
 
             let resp = Response::new(
                 StatusCode(206),
@@ -289,7 +295,10 @@ fn handle_keepalive(
         let _ = request.respond(resp);
         return;
     }
-    keepalive_tracker.lock().unwrap().insert(path, Instant::now());
+    keepalive_tracker
+        .lock()
+        .unwrap()
+        .insert(path, Instant::now());
     let mut resp = Response::from_string("OK").with_status_code(200);
     for h in common_headers() {
         resp.add_header(h);
@@ -339,9 +348,7 @@ fn handle_transcode(
         }
     }
 
-    let mut args: Vec<String> = vec![
-        "-hide_banner".into(), "-loglevel".into(), "error".into(),
-    ];
+    let mut args: Vec<String> = vec!["-hide_banner".into(), "-loglevel".into(), "error".into()];
     if seek_secs > 0.0 {
         let coarse = (seek_secs - 1.0).max(0.0);
         args.extend(["-ss".into(), format!("{:.3}", coarse)]);
@@ -352,11 +359,16 @@ fn handle_transcode(
         args.extend(["-ss".into(), format!("{:.3}", fine)]);
     }
     args.extend([
-        "-c:v".into(), "libx264".into(),
-        "-preset".into(), "ultrafast".into(),
-        "-tune".into(), "zerolatency".into(),
-        "-crf".into(), "23".into(),
-        "-fps_mode".into(), "cfr".into(),
+        "-c:v".into(),
+        "libx264".into(),
+        "-preset".into(),
+        "ultrafast".into(),
+        "-tune".into(),
+        "zerolatency".into(),
+        "-crf".into(),
+        "23".into(),
+        "-fps_mode".into(),
+        "cfr".into(),
     ]);
     if speed != 1.0 {
         args.extend(["-vf".into(), format!("setpts=PTS/{:.4}", speed)]);
@@ -366,11 +378,16 @@ fn handle_transcode(
         }
     }
     args.extend([
-        "-c:a".into(), "aac".into(),
-        "-b:a".into(), "128k".into(),
-        "-ac".into(), "2".into(),
-        "-f".into(), "mp4".into(),
-        "-movflags".into(), "frag_keyframe+empty_moov+default_base_moof".into(),
+        "-c:a".into(),
+        "aac".into(),
+        "-b:a".into(),
+        "128k".into(),
+        "-ac".into(),
+        "2".into(),
+        "-f".into(),
+        "mp4".into(),
+        "-movflags".into(),
+        "frag_keyframe+empty_moov+default_base_moof".into(),
         "pipe:1".into(),
     ]);
 
@@ -420,7 +437,10 @@ fn handle_transcode(
         match owned.try_clone() {
             Ok(clone) => {
                 let resp_body = File::from(clone);
-                transcode_children.lock().unwrap().insert(path.clone(), (my_pid, child));
+                transcode_children
+                    .lock()
+                    .unwrap()
+                    .insert(path.clone(), (my_pid, child));
                 let mut headers = common_headers();
                 headers.push(ct_header("video/mp4"));
                 headers.push(Header::from_bytes(b"Accept-Ranges", b"none").unwrap());
@@ -431,7 +451,10 @@ fn handle_transcode(
             Err(_) => {
                 // Dup failed (too many fds) — fall back to direct pipe (no drain)
                 let resp_body = File::from(owned);
-                transcode_children.lock().unwrap().insert(path.clone(), (my_pid, child));
+                transcode_children
+                    .lock()
+                    .unwrap()
+                    .insert(path.clone(), (my_pid, child));
                 let mut headers = common_headers();
                 headers.push(ct_header("video/mp4"));
                 headers.push(Header::from_bytes(b"Accept-Ranges", b"none").unwrap());
@@ -542,7 +565,11 @@ impl MediaServer {
             }
         });
 
-        Ok(MediaServer { port, running, transcode_children })
+        Ok(MediaServer {
+            port,
+            running,
+            transcode_children,
+        })
     }
 }
 
@@ -575,7 +602,8 @@ fn handle_subtitle(request: tiny_http::Request, url: &str) {
         }
     }
 
-    if path.is_empty() || track_idx.is_empty() || !Path::new(&path).exists() || !is_safe_path(&path) {
+    if path.is_empty() || track_idx.is_empty() || !Path::new(&path).exists() || !is_safe_path(&path)
+    {
         let _ = request.respond(Response::from_string("Bad Request").with_status_code(400));
         return;
     }
@@ -584,7 +612,8 @@ fn handle_subtitle(request: tiny_http::Request, url: &str) {
     let idx: usize = match track_idx.parse() {
         Ok(i) => i,
         Err(_) => {
-            let _ = request.respond(Response::from_string("Invalid track index").with_status_code(400));
+            let _ =
+                request.respond(Response::from_string("Invalid track index").with_status_code(400));
             return;
         }
     };
@@ -631,13 +660,7 @@ fn handle_subtitle(request: tiny_http::Request, url: &str) {
     headers.push(Header::from_bytes(b"Content-Type", b"text/vtt").unwrap());
     headers.push(Header::from_bytes(b"Accept-Ranges", b"none").unwrap());
 
-    let resp = Response::new(
-        StatusCode(200),
-        headers,
-        stdout,
-        None,
-        None,
-    );
+    let resp = Response::new(StatusCode(200), headers, stdout, None, None);
 
     let _ = request.respond(resp);
 

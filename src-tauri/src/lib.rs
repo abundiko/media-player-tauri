@@ -1,10 +1,10 @@
 mod media_server;
 
+use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
 use std::path::Path;
 use std::sync::Mutex;
 use tauri::State;
-use serde::{Deserialize, Serialize};
 
 struct ServerPort(u16);
 
@@ -21,7 +21,11 @@ struct PendingThumbnails(Mutex<HashSet<String>>);
 pub fn get_ffmpeg_path() -> String {
     if let Ok(mut exe_path) = std::env::current_exe() {
         exe_path.pop();
-        let bin_name = if cfg!(target_os = "windows") { "caste-ffmpeg.exe" } else { "caste-ffmpeg" };
+        let bin_name = if cfg!(target_os = "windows") {
+            "caste-ffmpeg.exe"
+        } else {
+            "caste-ffmpeg"
+        };
         let sidecar = exe_path.join(bin_name);
         if sidecar.exists() {
             return sidecar.to_string_lossy().to_string();
@@ -33,7 +37,11 @@ pub fn get_ffmpeg_path() -> String {
 pub fn get_ffprobe_path() -> String {
     if let Ok(mut exe_path) = std::env::current_exe() {
         exe_path.pop();
-        let bin_name = if cfg!(target_os = "windows") { "caste-ffprobe.exe" } else { "caste-ffprobe" };
+        let bin_name = if cfg!(target_os = "windows") {
+            "caste-ffprobe.exe"
+        } else {
+            "caste-ffprobe"
+        };
         let sidecar = exe_path.join(bin_name);
         if sidecar.exists() {
             return sidecar.to_string_lossy().to_string();
@@ -71,7 +79,10 @@ fn read_file_bytes(path: String) -> Result<Vec<u8>, String> {
 #[tauri::command]
 fn get_transcode_url(path: String, seek_time: f64, speed: f64, port: State<ServerPort>) -> String {
     let encoded = urlencoding::encode(&path);
-    format!("http://127.0.0.1:{}/transcode?path={}&t={:.3}&s={:.3}", port.0, encoded, seek_time, speed)
+    format!(
+        "http://127.0.0.1:{}/transcode?path={}&t={:.3}&s={:.3}",
+        port.0, encoded, seek_time, speed
+    )
 }
 
 #[tauri::command]
@@ -79,9 +90,12 @@ async fn probe_duration(path: String) -> Result<f64, String> {
     tauri::async_runtime::spawn_blocking(move || {
         let child = std::process::Command::new(get_ffprobe_path())
             .args([
-                "-v", "error",
-                "-show_entries", "format=duration",
-                "-of", "default=noprint_wrappers=1:nokey=1",
+                "-v",
+                "error",
+                "-show_entries",
+                "format=duration",
+                "-of",
+                "default=noprint_wrappers=1:nokey=1",
                 &path,
             ])
             .stdout(std::process::Stdio::piped())
@@ -100,7 +114,9 @@ async fn probe_duration(path: String) -> Result<f64, String> {
         }
 
         let s = String::from_utf8_lossy(&output.stdout);
-        s.trim().parse::<f64>().map_err(|e| format!("parse error: {}", e))
+        s.trim()
+            .parse::<f64>()
+            .map_err(|e| format!("parse error: {}", e))
     })
     .await
     .map_err(|e| format!("probe_duration task crashed: {}", e))?
@@ -130,10 +146,14 @@ async fn get_subtitle_tracks(path: String) -> Result<Vec<SubtitleTrack>, String>
     tauri::async_runtime::spawn_blocking(move || {
         let output = std::process::Command::new(get_ffprobe_path())
             .args([
-                "-v", "error",
-                "-select_streams", "s",
-                "-show_entries", "stream=index,tags",
-                "-of", "json",
+                "-v",
+                "error",
+                "-select_streams",
+                "s",
+                "-show_entries",
+                "stream=index,tags",
+                "-of",
+                "json",
                 &path,
             ])
             .output()
@@ -148,26 +168,33 @@ async fn get_subtitle_tracks(path: String) -> Result<Vec<SubtitleTrack>, String>
         let parsed: FfprobeOutput = serde_json::from_slice(&output.stdout)
             .map_err(|e| format!("Failed to parse ffprobe output: {}", e))?;
 
-        let tracks = parsed.streams.into_iter().map(|s| {
-            let mut title = format!("Track {}", s.index);
-            let mut language = String::from("en");
+        let tracks = parsed
+            .streams
+            .into_iter()
+            .map(|s| {
+                let mut title = format!("Track {}", s.index);
+                let mut language = String::from("en");
 
-            if let Some(tags) = s.tags {
-                let lower_tags: std::collections::HashMap<_, _> = tags.into_iter().map(|(k, v)| (k.to_lowercase(), v)).collect();
-                if let Some(t) = lower_tags.get("title") {
-                    title = t.clone();
+                if let Some(tags) = s.tags {
+                    let lower_tags: std::collections::HashMap<_, _> = tags
+                        .into_iter()
+                        .map(|(k, v)| (k.to_lowercase(), v))
+                        .collect();
+                    if let Some(t) = lower_tags.get("title") {
+                        title = t.clone();
+                    }
+                    if let Some(l) = lower_tags.get("language") {
+                        language = l.clone();
+                    }
                 }
-                if let Some(l) = lower_tags.get("language") {
-                    language = l.clone();
-                }
-            }
 
-            SubtitleTrack {
-                index: s.index,
-                title,
-                language,
-            }
-        }).collect();
+                SubtitleTrack {
+                    index: s.index,
+                    title,
+                    language,
+                }
+            })
+            .collect();
 
         Ok(tracks)
     })
@@ -184,7 +211,7 @@ struct ScannedVideo {
 }
 
 const MEDIA_EXTS: &[&str] = &[
-    "mp4", "mkv", "avi", "mov", "wmv", "flv", "webm", "m4v", "mpg", "mpeg",
+    "mp4", "mkv", "avi", "mov", "wmv", "flv", "webm", "m4v", "mpg", "mpeg", "ts", "ogv", "3gp",
     "mp3", "flac", "wav", "aac", "ogg", "opus", "m4a", "wma", "ac3", "dts",
 ];
 
@@ -201,9 +228,7 @@ fn is_audio_ext(path: &Path) -> bool {
 }
 
 /// File extensions allowed for `read_file_bytes` — media + subtitle formats.
-const READABLE_EXTS: &[&str] = &[
-    "srt", "vtt", "ass", "ssa", "sub",
-];
+const READABLE_EXTS: &[&str] = &["srt", "vtt", "ass", "ssa", "sub"];
 
 fn is_media_ext(path: &Path) -> bool {
     path.extension()
@@ -390,7 +415,10 @@ async fn get_video_thumbnail(
     // Check disk cache first — no ffmpeg needed
     if Path::new(&cache_path).exists() {
         let encoded = urlencoding::encode(&cache_path);
-        return Ok(format!("http://127.0.0.1:{}/thumb?path={}", server_port, encoded));
+        return Ok(format!(
+            "http://127.0.0.1:{}/thumb?path={}",
+            server_port, encoded
+        ));
     }
 
     // Dedup: skip if another request is already extracting this thumbnail
@@ -403,13 +431,20 @@ async fn get_video_thumbnail(
     }
 
     // Acquire semaphore permit (blocks asynchronously when capacity reached)
-    let _permit = sem.0.acquire().await.map_err(|e| format!("semaphore error: {}", e))?;
+    let _permit = sem
+        .0
+        .acquire()
+        .await
+        .map_err(|e| format!("semaphore error: {}", e))?;
 
     // Double-check after acquiring permit
     if Path::new(&cache_path).exists() {
         clear_pending_thumb(&pending.0, &path);
         let encoded = urlencoding::encode(&cache_path);
-        return Ok(format!("http://127.0.0.1:{}/thumb?path={}", server_port, encoded));
+        return Ok(format!(
+            "http://127.0.0.1:{}/thumb?path={}",
+            server_port, encoded
+        ));
     }
 
     // Audio-only files have no video stream to capture — skip thumbnail
@@ -430,11 +465,16 @@ async fn get_video_thumbnail(
         for seek in ["5", "2", "0"] {
             let result = std::process::Command::new(&ffmpeg_path)
                 .args([
-                    "-ss", seek,
-                    "-i", &path_clone,
-                    "-vframes", "1",
-                    "-vf", "scale=320:-1",
-                    "-q:v", "8",
+                    "-ss",
+                    seek,
+                    "-i",
+                    &path_clone,
+                    "-vframes",
+                    "1",
+                    "-vf",
+                    "scale=320:-1",
+                    "-q:v",
+                    "8",
                     "-y",
                     &cache_path_clone,
                 ])
@@ -449,7 +489,11 @@ async fn get_video_thumbnail(
                 }
                 if !output.status.success() {
                     let stderr = String::from_utf8_lossy(&output.stderr);
-                    log::error!("get_video_thumbnail ffmpeg error (seek={}): {}", seek, stderr.trim());
+                    log::error!(
+                        "get_video_thumbnail ffmpeg error (seek={}): {}",
+                        seek,
+                        stderr.trim()
+                    );
                 }
             }
         }
@@ -469,7 +513,10 @@ async fn get_video_thumbnail(
     result?;
 
     let encoded = urlencoding::encode(&cache_path);
-    Ok(format!("http://127.0.0.1:{}/thumb?path={}", server_port, encoded))
+    Ok(format!(
+        "http://127.0.0.1:{}/thumb?path={}",
+        server_port, encoded
+    ))
 }
 
 fn ensure_cache_dir() -> String {
@@ -500,7 +547,17 @@ pub fn run() {
     let server = media_server::MediaServer::start().expect("Failed to start media server");
     let cache_dir = ensure_cache_dir();
 
-    tauri::Builder::default()
+    let app = tauri::Builder::default()
+        .plugin(tauri_plugin_single_instance::init(|app, args, _cwd| {
+            use tauri::Emitter;
+            if args.len() > 1 {
+                if let Some(path) = args.get(1) {
+                    if std::path::Path::new(path).exists() {
+                        let _ = app.emit("file-opened", path);
+                    }
+                }
+            }
+        }))
         .plugin(tauri_plugin_dialog::init())
         .manage(ServerPort(server.port))
         .manage(ThumbSemaphore(tokio::sync::Semaphore::new(2)))

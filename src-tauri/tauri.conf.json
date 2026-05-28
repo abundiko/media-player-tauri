@@ -51,13 +51,130 @@
     ],
     "fileAssociations": [
       {
-        "name": "Media File",
-        "description": "Caste Video and Audio File",
+        "name": "MP4 Video",
+        "description": "MP4 Video File",
         "mimeType": "video/mp4",
-        "ext": [
-          "mp4", "mkv", "avi", "mov", "wmv", "flv", "webm", "m4v", "mpg", "mpeg",
-          "mp3", "flac", "wav", "aac", "ogg", "opus", "m4a", "wma", "ac3", "dts"
-        ]
+        "ext": ["mp4", "m4v"]
+      },
+      {
+        "name": "Matroska Video",
+        "description": "Matroska Video File",
+        "mimeType": "video/x-matroska",
+        "ext": ["mkv"]
+      },
+      {
+        "name": "AVI Video",
+        "description": "Audio Video Interleave File",
+        "mimeType": "video/x-msvideo",
+        "ext": ["avi"]
+      },
+      {
+        "name": "QuickTime Video",
+        "description": "Apple QuickTime Movie",
+        "mimeType": "video/quicktime",
+        "ext": ["mov"]
+      },
+      {
+        "name": "Windows Media Video",
+        "description": "Windows Media Video File",
+        "mimeType": "video/x-ms-wmv",
+        "ext": ["wmv"]
+      },
+      {
+        "name": "Flash Video",
+        "description": "Flash Video File",
+        "mimeType": "video/x-flv",
+        "ext": ["flv"]
+      },
+      {
+        "name": "WebM Video",
+        "description": "WebM Video File",
+        "mimeType": "video/webm",
+        "ext": ["webm"]
+      },
+      {
+        "name": "MPEG Video",
+        "description": "MPEG Video File",
+        "mimeType": "video/mpeg",
+        "ext": ["mpg", "mpeg"]
+      },
+      {
+        "name": "MPEG Transport Stream",
+        "description": "MPEG Transport Stream",
+        "mimeType": "video/mp2t",
+        "ext": ["ts"]
+      },
+      {
+        "name": "Ogg Video",
+        "description": "Ogg Video File",
+        "mimeType": "video/ogg",
+        "ext": ["ogv"]
+      },
+      {
+        "name": "3GP Video",
+        "description": "3GPP Media File",
+        "mimeType": "video/3gpp",
+        "ext": ["3gp"]
+      },
+      {
+        "name": "MP3 Audio",
+        "description": "MP3 Audio File",
+        "mimeType": "audio/mpeg",
+        "ext": ["mp3"]
+      },
+      {
+        "name": "FLAC Audio",
+        "description": "Free Lossless Audio Codec",
+        "mimeType": "audio/flac",
+        "ext": ["flac"]
+      },
+      {
+        "name": "WAV Audio",
+        "description": "WAVE Audio File",
+        "mimeType": "audio/wav",
+        "ext": ["wav"]
+      },
+      {
+        "name": "AAC Audio",
+        "description": "Advanced Audio Coding File",
+        "mimeType": "audio/aac",
+        "ext": ["aac"]
+      },
+      {
+        "name": "Ogg Audio",
+        "description": "Ogg Audio File",
+        "mimeType": "audio/ogg",
+        "ext": ["ogg"]
+      },
+      {
+        "name": "Opus Audio",
+        "description": "Opus Audio File",
+        "mimeType": "audio/opus",
+        "ext": ["opus"]
+      },
+      {
+        "name": "M4A Audio",
+        "description": "MPEG-4 Audio File",
+        "mimeType": "audio/mp4",
+        "ext": ["m4a"]
+      },
+      {
+        "name": "Windows Media Audio",
+        "description": "Windows Media Audio File",
+        "mimeType": "audio/x-ms-wma",
+        "ext": ["wma"]
+      },
+      {
+        "name": "AC3 Audio",
+        "description": "Dolby Digital AC-3 Audio",
+        "mimeType": "audio/ac3",
+        "ext": ["ac3"]
+      },
+      {
+        "name": "DTS Audio",
+        "description": "DTS Audio File",
+        "mimeType": "audio/vnd.dts",
+        "ext": ["dts"]
       }
     ],
     "windows": {

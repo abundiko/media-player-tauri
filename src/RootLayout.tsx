@@ -44,7 +44,7 @@ export function RootLayout() {
 
     const setup = async () => {
       try {
-        const unlisten = await getCurrentWindow().onDragDropEvent((event) => {
+        const unlistenDrag = await getCurrentWindow().onDragDropEvent((event) => {
           const payload = event.payload;
 
           switch (payload.type) {
@@ -77,19 +77,33 @@ export function RootLayout() {
           }
         });
 
+        const { listen } = await import("@tauri-apps/api/event");
+        const unlistenFileOpened = await listen<string>("file-opened", (event) => {
+          console.log("[startup] Received file-opened event:", event.payload);
+          if (isMediaFile(event.payload)) {
+            loadFile(event.payload);
+          } else {
+            setErrorModalOpen(true);
+          }
+        });
+
         if (cancelled) {
-          unlisten();
+          unlistenDrag();
+          unlistenFileOpened();
           return;
         }
 
         if (listenerRef.current) {
           listenerRef.current();
         }
-        listenerRef.current = unlisten;
-        console.log("[drag] Tauri drag-drop listener registered");
+        listenerRef.current = () => {
+          unlistenDrag();
+          unlistenFileOpened();
+        };
+        console.log("[drag] Tauri listeners registered");
       } catch (e) {
         if (!cancelled) {
-          console.error("[drag] failed to setup Tauri drag-drop listener:", e);
+          console.error("[drag] failed to setup Tauri listeners:", e);
         }
       }
     };
@@ -101,7 +115,7 @@ export function RootLayout() {
       if (listenerRef.current) {
         listenerRef.current();
         listenerRef.current = null;
-        console.log("[drag] Tauri drag-drop listener removed");
+        console.log("[drag] Tauri listeners removed");
       }
     };
   }, [loadFile]);
