@@ -757,19 +757,26 @@ export function VideoPlayer() {
     };
   }, [showControls]);
 
-  // Track fullscreen state
+  // Track fullscreen state using Tauri window API
   useEffect(() => {
-    const onFsChange = () => setFullscreen(!!document.fullscreenElement);
-    document.addEventListener("fullscreenchange", onFsChange);
-    return () => document.removeEventListener("fullscreenchange", onFsChange);
+    const win = getCurrentWindow();
+    let unlisten: (() => void) | undefined;
+    
+    // Check initial state
+    win.isFullscreen().then(setFullscreen);
+    
+    win.onResized(async () => {
+      setFullscreen(await win.isFullscreen());
+    }).then(u => { unlisten = u; });
+    
+    return () => { if (unlisten) unlisten(); };
   }, []);
 
-  const toggleFullscreen = useCallback(() => {
-    if (document.fullscreenElement) {
-      document.exitFullscreen();
-    } else {
-      containerRef.current?.requestFullscreen();
-    }
+  const toggleFullscreen = useCallback(async () => {
+    const win = getCurrentWindow();
+    const isFs = await win.isFullscreen();
+    await win.setFullscreen(!isFs);
+    setFullscreen(!isFs);
   }, []);
 
   const [externalCues, setExternalCues] = useState<VttCue[]>([]);

@@ -116,9 +116,15 @@ fn handle_request(
 
     let url = request.url().to_string();
 
-    // Route /transcode requests to the transcode handler
+    // Route /transcode requests to the m3u8 playlist generator
     if url.starts_with("/transcode?") {
-        handle_transcode(request, &url, transcode_children, keepalive_tracker);
+        handle_transcode_m3u8(request, &url);
+        return;
+    }
+
+    // Route /transcode_stream requests to the transcode handler (ffmpeg pipe)
+    if url.starts_with("/transcode_stream?") {
+        handle_transcode_stream(request, &url, transcode_children, keepalive_tracker);
         return;
     }
 
@@ -306,15 +312,45 @@ fn handle_keepalive(
     let _ = request.respond(resp);
 }
 
-/// Transcode video on-the-fly via FFmpeg to H.264 fragmented MP4.
-/// URL format: /transcode?path=<url-encoded-path>&t=<seek-seconds>&s=<speed>
-fn handle_transcode(
+fn handle_transcode_m3u8(request: tiny_http::Request, url: &str) {
+    let query = url.strip_prefix("/transcode?").unwrap_or("");
+    
+    // Pass along the query to the stream endpoint
+    let stream_url = format!("/transcode_stream?{}", query);
+    
+    // We create a dummy HLS playlist that points to the live stream
+    let m3u8 = format!(
+        "#EXTM3U\n\
+         #EXT-X-VERSION:3\n\
+         #EXT-X-TARGETDURATION:86400\n\
+         #EXT-X-MEDIA-SEQUENCE:0\n\
+         #EXTINF:86400.0,\n\
+         {}\n\
+         #EXT-X-ENDLIST\n",
+        stream_url
+    );
+
+    let mut headers = common_headers();
+    headers.push(ct_header("application/vnd.apple.mpegurl"));
+    let mut resp = Response::from_string(m3u8)
+        .with_status_code(200);
+        
+    for h in headers {
+        resp.add_header(h);
+    }
+        
+    let _ = request.respond(resp);
+}
+
+/// Transcode video on-the-fly via FFmpeg to MPEG-TS.
+/// URL format: /transcode_stream?path=<url-encoded-path>&t=<seek-seconds>&s=<speed>
+fn handle_transcode_stream(
     request: tiny_http::Request,
     url: &str,
     transcode_children: Arc<Mutex<HashMap<String, (u32, Child)>>>,
     keepalive_tracker: Arc<Mutex<HashMap<String, Instant>>>,
 ) {
-    let query = url.strip_prefix("/transcode?").unwrap_or("");
+    let query = url.strip_prefix("/transcode_stream?").unwrap_or("");
     let mut raw_path = String::new();
     let mut seek_secs: f64 = 0.0;
     let mut speed: f64 = 1.0;
@@ -385,9 +421,7 @@ fn handle_transcode(
         "-ac".into(),
         "2".into(),
         "-f".into(),
-        "mp4".into(),
-        "-movflags".into(),
-        "frag_keyframe+empty_moov+default_base_moof".into(),
+        "mpegts".into(),
         "pipe:1".into(),
     ]);
 
@@ -442,7 +476,7 @@ fn handle_transcode(
                     .unwrap()
                     .insert(path.clone(), (my_pid, child));
                 let mut headers = common_headers();
-                headers.push(ct_header("video/mp4"));
+                headers.push(ct_header("video/mp2t"));
                 headers.push(Header::from_bytes(b"Accept-Ranges", b"none").unwrap());
                 let resp = Response::new(StatusCode(200), headers, resp_body, None, None);
                 let _ = request.respond(resp);
@@ -456,7 +490,7 @@ fn handle_transcode(
                     .unwrap()
                     .insert(path.clone(), (my_pid, child));
                 let mut headers = common_headers();
-                headers.push(ct_header("video/mp4"));
+                headers.push(ct_header("video/mp2t"));
                 headers.push(Header::from_bytes(b"Accept-Ranges", b"none").unwrap());
                 let resp = Response::new(StatusCode(200), headers, resp_body, None, None);
                 let _ = request.respond(resp);
